@@ -631,8 +631,25 @@ export default function Home() {
         {/* HEADER */}
 
         <div className="mb-8">
-          <div className="inline-flex rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-            Iron Horse Baseball · 2026
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="inline-flex rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+              Iron Horse Baseball · 2026
+            </div>
+
+            <nav className="flex rounded-xl border border-slate-800 bg-slate-900 p-1 text-sm">
+              <a
+                href="/"
+                className="rounded-lg bg-slate-800 px-4 py-2 font-semibold text-white"
+              >
+                Run Maximizer
+              </a>
+              <a
+                href="/pitching"
+                className="rounded-lg px-4 py-2 text-slate-400 hover:bg-slate-800 hover:text-white"
+              >
+                Pitching Optimizer
+              </a>
+            </nav>
           </div>
 
           <h1 className="mt-5 text-4xl font-black tracking-tight md:text-6xl">
