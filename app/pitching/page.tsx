@@ -84,6 +84,10 @@ type JamAppearance = {
   - 7/20 vs Vipers: three inherited runners crossed while Cary pitched,
     but the third was error-aided by a shortstop error. The log preserves all three
     raw runs while the jam model charges Cary with only two. The same error-aided adjustment is applied to the 5/26 Degens appearance, where a defensive error prolonged the inning before the third inherited runner scored.
+  - 8/30 vs Athletics: manual correction. Cary entered mid-inning with the
+    bases loaded and 0 outs after Stanton had already allowed a run. Two of the
+    three inherited runners scored and one was stranded. This replaces the
+    earlier automated clean-inning attribution for Cary.
 */
 const JAM_APPEARANCES: JamAppearance[] = [
   {
@@ -175,7 +179,18 @@ const JAM_APPEARANCES: JamAppearance[] = [
     outsAtEntry: 2,
     result: "success",
     note: "Entered with a runner on 2nd and stranded him.",
-  },];
+  },
+  {
+    gameId: 19,
+    playerId: 7,
+    inheritedRunners: 3,
+    inheritedRunnersScored: 2,
+    inheritedRunnersScoredOnError: 0,
+    outsAtEntry: 0,
+    result: "partial",
+    note: "Entered mid-inning with bases loaded and 0 outs after Stanton had already allowed a run. Two inherited runners scored and one was stranded.",
+  },
+];
 
 type PitcherSummary = {
   playerId: number;
