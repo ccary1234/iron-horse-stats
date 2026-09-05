@@ -60,7 +60,11 @@ type JamAppearance = {
   gameId: number;
   playerId: number;
   inheritedRunners: number;
+  // Raw number of inherited runners that crossed the plate while this reliever was in.
   inheritedRunnersScored: number;
+  // Subset of inheritedRunnersScored that scored directly because of a defensive error.
+  // These are shown in the log, but are removed from the pitcher's jam-performance penalty.
+  inheritedRunnersScoredOnError: number;
   outsAtEntry: number;
   result: JamResult;
   note: string;
@@ -77,6 +81,9 @@ type JamAppearance = {
   - 7/13 vs Thunder: Cary entered with the bases loaded and 2 outs and
     escaped the jam. Quinlan's four-walk final inning was his own clean-
     inning appearance, so it is NOT treated as an inherited-runner entry.
+  - 7/20 vs Vipers: three inherited runners crossed while Cary pitched,
+    but the third scored on a shortstop error. The log preserves all three
+    raw runs while the jam model charges Cary with only two.
 */
 const JAM_APPEARANCES: JamAppearance[] = [
   {
@@ -84,6 +91,7 @@ const JAM_APPEARANCES: JamAppearance[] = [
     playerId: 7,
     inheritedRunners: 3,
     inheritedRunnersScored: 3,
+    inheritedRunnersScoredOnError: 0,
     outsAtEntry: 1,
     result: "failure",
     note: "Entered with bases loaded; all three inherited runners scored.",
@@ -93,6 +101,7 @@ const JAM_APPEARANCES: JamAppearance[] = [
     playerId: 15,
     inheritedRunners: 2,
     inheritedRunnersScored: 1,
+    inheritedRunnersScoredOnError: 0,
     outsAtEntry: 0,
     result: "partial",
     note: "Entered after Cary allowed Hogan's single; runners on 1st and 3rd with 0 outs. One inherited runner scored.",
@@ -102,6 +111,7 @@ const JAM_APPEARANCES: JamAppearance[] = [
     playerId: 7,
     inheritedRunners: 3,
     inheritedRunnersScored: 0,
+    inheritedRunnersScoredOnError: 0,
     outsAtEntry: 2,
     result: "success",
     note: "Entered with bases loaded and 2 outs and escaped the inning.",
@@ -111,15 +121,17 @@ const JAM_APPEARANCES: JamAppearance[] = [
     playerId: 7,
     inheritedRunners: 3,
     inheritedRunnersScored: 3,
+    inheritedRunnersScoredOnError: 1,
     outsAtEntry: 1,
-    result: "failure",
-    note: "Entered with bases loaded; all three inherited runners scored.",
+    result: "partial",
+    note: "Entered with bases loaded and 1 out. Two inherited runners scored on a double; the third scored on a shortstop error. Error-aided run is excluded from Cary's jam penalty.",
   },
   {
     gameId: 13,
     playerId: 6,
     inheritedRunners: 2,
     inheritedRunnersScored: 0,
+    inheritedRunnersScoredOnError: 0,
     outsAtEntry: 2,
     result: "success",
     note: "Entered with runners on 1st and 2nd and stranded both.",
@@ -129,6 +141,7 @@ const JAM_APPEARANCES: JamAppearance[] = [
     playerId: 13,
     inheritedRunners: 2,
     inheritedRunnersScored: 2,
+    inheritedRunnersScoredOnError: 0,
     outsAtEntry: 2,
     result: "failure",
     note: "Entered with runners on 2nd and 3rd; both inherited runners scored.",
@@ -138,6 +151,7 @@ const JAM_APPEARANCES: JamAppearance[] = [
     playerId: 7,
     inheritedRunners: 1,
     inheritedRunnersScored: 0,
+    inheritedRunnersScoredOnError: 0,
     outsAtEntry: 1,
     result: "success",
     note: "Entered with a runner on 1st and prevented the inherited runner from scoring.",
@@ -147,6 +161,7 @@ const JAM_APPEARANCES: JamAppearance[] = [
     playerId: 3,
     inheritedRunners: 1,
     inheritedRunnersScored: 0,
+    inheritedRunnersScoredOnError: 0,
     outsAtEntry: 1,
     result: "success",
     note: "Entered with a runner on 1st and stranded him.",
@@ -156,11 +171,11 @@ const JAM_APPEARANCES: JamAppearance[] = [
     playerId: 15,
     inheritedRunners: 1,
     inheritedRunnersScored: 0,
+    inheritedRunnersScoredOnError: 0,
     outsAtEntry: 2,
     result: "success",
     note: "Entered with a runner on 2nd and stranded him.",
-  },
-];
+  },];
 
 type PitcherSummary = {
   playerId: number;
@@ -223,7 +238,9 @@ type PitcherSummary = {
   failedJamAppearances: number;
   inheritedRunners: number;
   inheritedRunnersScored: number;
-  inheritedRunnersStranded: number;
+  inheritedRunnersScoredOnError: number;
+  adjustedInheritedRunnersScored: number;
+  adjustedInheritedRunnersPrevented: number;
   jamHistoryScore: number;
 
   starterScore: number;
@@ -406,7 +423,7 @@ function DepthChart({
               </div>
               <div className="mt-1 text-xs text-slate-500">
                 {scenario === "runnersOn"
-                  ? `${pitcher.successfulJamAppearances} jam wins · ${pitcher.jamAppearances} jam entries · ${pitcher.inheritedRunnersStranded}/${pitcher.inheritedRunners} IR stranded`
+                  ? `${pitcher.successfulJamAppearances} jam wins · ${pitcher.partialJamAppearances} partial · ${pitcher.adjustedInheritedRunnersPrevented}/${pitcher.inheritedRunners} adjusted IR prevented`
                   : scenario === "multiInning"
                   ? `${pitcher.twoPlusInningAppearances} appearances of 2+ IP · max ${decimal(pitcher.maxIpAppearance, 1)} IP`
                   : `${decimal(pitcher.adjustedEra)} adj. ERA · ${decimal(pitcher.adjustedWhip)} adj. WHIP · ${pitcher.appearances} app`}
@@ -637,6 +654,8 @@ export default function PitchingOptimizerPage() {
       let failedJamAppearances = 0;
       let inheritedRunners = 0;
       let inheritedRunnersScored = 0;
+      let inheritedRunnersScoredOnError = 0;
+      let adjustedInheritedRunnersScored = 0;
       let weightedSuccessfulJams = 0;
       let weightedPartialJams = 0;
       let weightedFailedJams = 0;
@@ -649,8 +668,15 @@ export default function PitchingOptimizerPage() {
         const weight = recency * QUALITY_MULTIPLIERS[quality];
         const difficulty = jam.inheritedRunners + (jam.outsAtEntry === 0 ? 1 : jam.outsAtEntry === 1 ? 0.5 : 0);
 
+        const adjustedScored = Math.max(
+          0,
+          jam.inheritedRunnersScored - jam.inheritedRunnersScoredOnError
+        );
+
         inheritedRunners += jam.inheritedRunners;
         inheritedRunnersScored += jam.inheritedRunnersScored;
+        inheritedRunnersScoredOnError += jam.inheritedRunnersScoredOnError;
+        adjustedInheritedRunnersScored += adjustedScored;
 
         if (jam.result === "success") {
           successfulJamAppearances += 1;
@@ -666,7 +692,10 @@ export default function PitchingOptimizerPage() {
       });
 
       const jamAppearances = jamRows.length;
-      const inheritedRunnersStranded = Math.max(0, inheritedRunners - inheritedRunnersScored);
+      const adjustedInheritedRunnersPrevented = Math.max(
+        0,
+        inheritedRunners - adjustedInheritedRunnersScored
+      );
 
       /*
         JAM HISTORY v3 — SUCCESS COUNT FIRST
@@ -811,7 +840,9 @@ export default function PitchingOptimizerPage() {
         failedJamAppearances,
         inheritedRunners,
         inheritedRunnersScored,
-        inheritedRunnersStranded,
+        inheritedRunnersScoredOnError,
+        adjustedInheritedRunnersScored,
+        adjustedInheritedRunnersPrevented,
         jamHistoryScore,
         starterScore: starterRaw * normalConfidence,
         tightFreshScore: tightFreshRaw * leverageConfidence,
@@ -1313,11 +1344,11 @@ export default function PitchingOptimizerPage() {
           <div className="text-xs font-semibold uppercase tracking-widest text-slate-500">Proven runners-on history</div>
           <h2 className="mt-1 text-2xl font-black">High-Leverage Relief Log</h2>
           <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-400">
-            Success count is the main driver. A pitcher does not get a huge advantage merely for going 1-for-1. Clean-inning appearances are intentionally excluded.
+            Success count is the main driver. Clean-inning appearances are intentionally excluded. If an inherited runner scores directly because of a defensive error, the raw run remains visible here but is removed from the reliever's jam penalty.
           </p>
 
           <div className="mt-5 overflow-x-auto">
-            <table className="min-w-[950px] w-full text-left text-sm">
+            <table className="min-w-[1120px] w-full text-left text-sm">
               <thead className="border-b border-slate-800 text-xs uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="px-3 py-3">Date</th>
@@ -1325,7 +1356,9 @@ export default function PitchingOptimizerPage() {
                   <th className="px-3 py-3">Pitcher</th>
                   <th className="px-3 py-3">Outs</th>
                   <th className="px-3 py-3">IR</th>
-                  <th className="px-3 py-3">IR Scored</th>
+                  <th className="px-3 py-3">Raw IR Scored</th>
+                  <th className="px-3 py-3">Scored on Error</th>
+                  <th className="px-3 py-3">Adjusted IR Scored</th>
                   <th className="px-3 py-3">Result</th>
                   <th className="px-3 py-3">Situation</th>
                 </tr>
@@ -1342,6 +1375,10 @@ export default function PitchingOptimizerPage() {
                       <td className="px-3 py-4">{jam.outsAtEntry}</td>
                       <td className="px-3 py-4">{jam.inheritedRunners}</td>
                       <td className="px-3 py-4">{jam.inheritedRunnersScored}</td>
+                      <td className="px-3 py-4">{jam.inheritedRunnersScoredOnError}</td>
+                      <td className="px-3 py-4 font-semibold text-white">
+                        {Math.max(0, jam.inheritedRunnersScored - jam.inheritedRunnersScoredOnError)}
+                      </td>
                       <td className="px-3 py-4">
                         <span className={`rounded-full border px-2.5 py-1 text-xs font-bold uppercase ${
                           jam.result === "success"
@@ -1370,6 +1407,7 @@ export default function PitchingOptimizerPage() {
             <p><strong className="text-white">Starter:</strong> chooses the best blend of run prevention, WHIP, control and demonstrated length. Historical multi-inning workload now matters much more than it did in v2.</p>
             <p><strong className="text-white">Tight game, fresh inning:</strong> emphasizes WHIP, control, strikeouts and run prevention. This is the default bridge-reliever ranking.</p>
             <p><strong className="text-white">Tight game, runners on:</strong> puts 40% of the raw score on proven jam history. Jam history is volume-first: repeated successful escapes are much more valuable than a perfect one-appearance rate.</p>
+            <p><strong className="text-white">Defensive-error adjustment:</strong> inherited runners that score directly because of a fielding error remain in the raw game log but are excluded from the reliever's adjusted inherited-runner total and jam penalty. The 7/20 Vipers appearance is therefore graded Partial: 3 inherited runners crossed, but only 2 are charged to Cary for this model.</p>
             <p><strong className="text-white">Late lead:</strong> emphasizes strikeouts, control, WHIP and K/BB so the model prefers pitchers least likely to create traffic when protecting a lead.</p>
             <p><strong className="text-white">Multiple innings:</strong> heavily rewards pitchers who have actually gone 2+ innings repeatedly. This prevents the model from assigning three innings to a pitcher who almost never works that long.</p>
             <p><strong className="text-white">Blowout:</strong> favors reliable inning coverage while lightly preserving the highest-leverage arms for another day.</p>
