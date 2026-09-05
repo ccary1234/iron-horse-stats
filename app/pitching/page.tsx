@@ -82,8 +82,8 @@ type JamAppearance = {
     escaped the jam. Quinlan's four-walk final inning was his own clean-
     inning appearance, so it is NOT treated as an inherited-runner entry.
   - 7/20 vs Vipers: three inherited runners crossed while Cary pitched,
-    but the third scored on a shortstop error. The log preserves all three
-    raw runs while the jam model charges Cary with only two.
+    but the third was error-aided by a shortstop error. The log preserves all three
+    raw runs while the jam model charges Cary with only two. The same error-aided adjustment is applied to the 5/26 Degens appearance, where a defensive error prolonged the inning before the third inherited runner scored.
 */
 const JAM_APPEARANCES: JamAppearance[] = [
   {
@@ -91,10 +91,10 @@ const JAM_APPEARANCES: JamAppearance[] = [
     playerId: 7,
     inheritedRunners: 3,
     inheritedRunnersScored: 3,
-    inheritedRunnersScoredOnError: 0,
+    inheritedRunnersScoredOnError: 1,
     outsAtEntry: 1,
-    result: "failure",
-    note: "Entered with bases loaded; all three inherited runners scored.",
+    result: "partial",
+    note: "Entered with bases loaded and 1 out. Two inherited runners scored on a single; a defensive error prolonged the inning and the third inherited runner later scored. That error-aided run is excluded from Cary's jam penalty.",
   },
   {
     gameId: 9,
@@ -124,7 +124,7 @@ const JAM_APPEARANCES: JamAppearance[] = [
     inheritedRunnersScoredOnError: 1,
     outsAtEntry: 1,
     result: "partial",
-    note: "Entered with bases loaded and 1 out. Two inherited runners scored on a double; the third scored on a shortstop error. Error-aided run is excluded from Cary's jam penalty.",
+    note: "Entered with bases loaded and 1 out. Two inherited runners scored on a double; the third was error-aided by a shortstop error. Error-aided run is excluded from Cary's jam penalty.",
   },
   {
     gameId: 13,
@@ -1357,7 +1357,7 @@ export default function PitchingOptimizerPage() {
                   <th className="px-3 py-3">Outs</th>
                   <th className="px-3 py-3">IR</th>
                   <th className="px-3 py-3">Raw IR Scored</th>
-                  <th className="px-3 py-3">Scored on Error</th>
+                  <th className="px-3 py-3">Error-Aided IR</th>
                   <th className="px-3 py-3">Adjusted IR Scored</th>
                   <th className="px-3 py-3">Result</th>
                   <th className="px-3 py-3">Situation</th>
