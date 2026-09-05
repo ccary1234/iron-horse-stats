@@ -224,6 +224,9 @@ type PitcherSummary = {
   maxIpAppearance: number;
   multiInningAppearances: number;
   twoPlusInningAppearances: number;
+  threePlusInningAppearances: number;
+  fourPlusInningAppearances: number;
+  starterWorkloadScore: number;
 
   adjustedEra: number;
   adjustedWhip: number;
@@ -612,6 +615,8 @@ export default function PitchingOptimizerPage() {
       const maxIpAppearance = ipAppearances.length > 0 ? Math.max(...ipAppearances) : 0;
       const multiInningAppearances = ipAppearances.filter((ip) => ip > 1).length;
       const twoPlusInningAppearances = ipAppearances.filter((ip) => ip >= 2).length;
+      const threePlusInningAppearances = ipAppearances.filter((ip) => ip >= 3).length;
+      const fourPlusInningAppearances = ipAppearances.filter((ip) => ip >= 4).length;
 
       const era = innings > 0 ? (earnedRuns * 9) / innings : 0;
       const whip = innings > 0 ? (walks + hits) / innings : 0;
@@ -647,6 +652,27 @@ export default function PitchingOptimizerPage() {
       const workloadCeiling = clamp(maxIpAppearance / 5);
       const durabilityScore =
         workloadVolume * 0.45 + workloadLength * 0.35 + workloadCeiling * 0.2;
+
+      /*
+        STARTER WORKLOAD PROFILE v4
+
+        This is intentionally separate from generic durability. A pitcher can be
+        useful for 1-2 innings without having demonstrated that he should start.
+
+        30% repeated 3+ inning appearances
+        25% repeated 4+ inning appearances
+        20% median appearance length
+        15% total innings / season workload
+        10% longest appearance
+
+        Repeated long outings matter much more than a single long relief appearance.
+      */
+      const starterWorkloadScore =
+        clamp(threePlusInningAppearances / 4) * 0.30 +
+        clamp(fourPlusInningAppearances / 3) * 0.25 +
+        clamp(medianIpAppearance / 4) * 0.20 +
+        clamp(innings / 20) * 0.15 +
+        clamp(maxIpAppearance / 5) * 0.10;
 
       /*
         Experience deliberately matters more in v3. A pitcher with one tiny
@@ -734,15 +760,30 @@ export default function PitchingOptimizerPage() {
           (1 - failurePenalty) * 0.1
       );
 
-      /* STARTER: performance plus actually demonstrated length. */
+      /*
+        STARTER v4 — STARTING IS A DISTINCT ROLE
+
+        30% demonstrated starter workload
+        22% run prevention
+        15% WHIP
+        10% control
+         8% hit prevention
+         5% strikeouts
+        10% experience / sample reliability
+
+        The major v3 -> v4 change is that repeated 3-5 inning work now matters
+        substantially more, while pure rate stats matter less. This prevents a
+        short-relief profile from ranking like a proven starter simply because
+        of a small sample of strong rate statistics.
+      */
       const starterRaw =
-        runPreventionScore * 0.25 +
-        whipScore * 0.2 +
-        durabilityScore * 0.24 +
-        controlScore * 0.12 +
-        hitPreventionScore * 0.09 +
-        strikeoutScore * 0.08 +
-        experienceScore * 0.02;
+        starterWorkloadScore * 0.30 +
+        runPreventionScore * 0.22 +
+        whipScore * 0.15 +
+        controlScore * 0.10 +
+        hitPreventionScore * 0.08 +
+        strikeoutScore * 0.05 +
+        experienceScore * 0.10;
 
       /* Tight game, clean inning. */
       const tightFreshRaw =
@@ -829,6 +870,9 @@ export default function PitchingOptimizerPage() {
         maxIpAppearance,
         multiInningAppearances,
         twoPlusInningAppearances,
+        threePlusInningAppearances,
+        fourPlusInningAppearances,
+        starterWorkloadScore,
         adjustedEra,
         adjustedWhip,
         adjustedKPct,
@@ -1307,7 +1351,7 @@ export default function PitchingOptimizerPage() {
           </p>
 
           <div className="mt-5 overflow-x-auto">
-            <table className="min-w-[1350px] w-full text-left text-sm">
+            <table className="min-w-[1600px] w-full text-left text-sm">
               <thead className="border-b border-slate-800 text-xs uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="px-3 py-3">Pitcher</th>
@@ -1315,6 +1359,9 @@ export default function PitchingOptimizerPage() {
                   <th className="px-3 py-3">IP</th>
                   <th className="px-3 py-3">Median IP</th>
                   <th className="px-3 py-3">2+ IP App</th>
+                  <th className="px-3 py-3">3+ IP App</th>
+                  <th className="px-3 py-3">4+ IP App</th>
+                  <th className="px-3 py-3">Starter Workload</th>
                   <th className="px-3 py-3">ERA</th>
                   <th className="px-3 py-3">WHIP</th>
                   <th className="px-3 py-3">K%</th>
@@ -1336,6 +1383,9 @@ export default function PitchingOptimizerPage() {
                     <td className="px-3 py-4">{decimal(pitcher.innings, 1)}</td>
                     <td className="px-3 py-4">{decimal(pitcher.medianIpAppearance, 1)}</td>
                     <td className="px-3 py-4">{pitcher.twoPlusInningAppearances}</td>
+                    <td className="px-3 py-4">{pitcher.threePlusInningAppearances}</td>
+                    <td className="px-3 py-4">{pitcher.fourPlusInningAppearances}</td>
+                    <td className="px-3 py-4">{score100(pitcher.starterWorkloadScore)}</td>
                     <td className="px-3 py-4">{decimal(pitcher.era)}</td>
                     <td className="px-3 py-4">{decimal(pitcher.whip)}</td>
                     <td className="px-3 py-4">{percent(pitcher.kPct)}</td>
@@ -1417,9 +1467,13 @@ export default function PitchingOptimizerPage() {
         {/* METHODOLOGY */}
         <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900 p-6">
           <div className="text-xs font-semibold uppercase tracking-widest text-slate-500">Methodology</div>
-          <h2 className="mt-1 text-2xl font-black">Pitching Optimizer v3</h2>
+          <h2 className="mt-1 text-2xl font-black">Pitching Optimizer v4</h2>
           <div className="mt-5 max-w-5xl space-y-4 text-sm leading-7 text-slate-400">
-            <p><strong className="text-white">Starter:</strong> chooses the best blend of run prevention, WHIP, control and demonstrated length. Historical multi-inning workload now matters much more than it did in v2.</p>
+            <p><strong className="text-white">Starter — v4 formula:</strong> 30% demonstrated starter workload, 22% run prevention, 15% WHIP, 10% control, 8% hit prevention, 5% strikeouts and 10% experience/sample reliability.</p>
+            <p><strong className="text-white">What changed from v3:</strong> v3 used 25% run prevention, 20% WHIP, 24% generic durability, 12% control, 9% hit prevention, 8% strikeouts and only 2% experience. That formula could allow a short-relief pitcher with good rate stats and one long outing to outrank a pitcher with a much stronger history of actually starting games.</p>
+            <p><strong className="text-white">New starter-workload component:</strong> the 30% workload portion is itself 30% repeated 3+ inning appearances, 25% repeated 4+ inning appearances, 20% median appearance length, 15% total innings and 10% longest appearance. Repeated 3-5 inning outings now matter much more than a single long appearance.</p>
+            <p><strong className="text-white">Role separation:</strong> generic durability is still used for the multiple-innings and low-leverage models. The new starter-workload score is used only for the starter ranking, so a pitcher such as Cary can still grade well as a situational reliever without automatically being treated as a top starting option.</p>
+            <p><strong className="text-white">Confidence:</strong> starter score still receives the existing overall sample-confidence multiplier after the v4 raw score is calculated. This continues to discount tiny samples in addition to the new 10% experience component.</p>
             <p><strong className="text-white">Tight game, fresh inning:</strong> emphasizes WHIP, control, strikeouts and run prevention. This is the default bridge-reliever ranking.</p>
             <p><strong className="text-white">Tight game, runners on:</strong> puts 40% of the raw score on proven jam history. Jam history is volume-first: repeated successful escapes are much more valuable than a perfect one-appearance rate.</p>
             <p><strong className="text-white">Defensive-error adjustment:</strong> inherited runners that score directly because of a fielding error remain in the raw game log but are excluded from the reliever's adjusted inherited-runner total and jam penalty. The 7/20 Vipers appearance is therefore graded Partial: 3 inherited runners crossed, but only 2 are charged to Cary for this model.</p>
