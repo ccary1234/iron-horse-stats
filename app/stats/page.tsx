@@ -131,13 +131,34 @@ function Nav() {
   );
 }
 
-function LeaderCard({ label, name, value, sub }: { label: string; name: string; value: string; sub?: string }) {
+function TopThreeCard({
+  label,
+  leaders,
+}: {
+  label: string;
+  leaders: { name: string; value: string; detail?: string }[];
+}) {
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
       <div className="text-[11px] font-bold uppercase tracking-widest text-slate-500">{label}</div>
-      <div className="mt-2 text-lg font-black text-white">{name}</div>
-      <div className="mt-1 text-2xl font-black text-emerald-400">{value}</div>
-      {sub && <div className="mt-1 text-xs text-slate-500">{sub}</div>}
+      <div className="mt-3 space-y-3">
+        {leaders.slice(0, 3).map((leader, index) => (
+          <div key={`${label}-${leader.name}-${index}`} className="flex items-start gap-3">
+            <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black ${
+              index === 0 ? "bg-emerald-400 text-slate-950" : "bg-slate-800 text-slate-300"
+            }`}>
+              {index + 1}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-bold text-white">{leader.name}</div>
+              {leader.detail && <div className="mt-0.5 text-xs text-slate-500">{leader.detail}</div>}
+            </div>
+            <div className={`whitespace-nowrap font-black ${index === 0 ? "text-emerald-400" : "text-slate-300"}`}>
+              {leader.value}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -234,10 +255,38 @@ export default function SeasonStatsPage() {
 
   const qualifiedHitters = hitters.filter(h => h.pa >= 20);
   const qualifiedPitchers = pitchers.filter(p => p.innings >= 10);
-  const maxH = (key: keyof Hitter) => [...qualifiedHitters].sort((a,b) => Number(b[key]) - Number(a[key]))[0];
-  const maxAllH = (key: keyof Hitter) => [...hitters].sort((a,b) => Number(b[key]) - Number(a[key]))[0];
-  const minP = (key: keyof Pitcher) => [...qualifiedPitchers].sort((a,b) => Number(a[key]) - Number(b[key]))[0];
-  const maxP = (key: keyof Pitcher) => [...pitchers].sort((a,b) => Number(b[key]) - Number(a[key]))[0];
+
+  const topHitters = (key: keyof Hitter, qualified = false) =>
+    [...(qualified ? qualifiedHitters : hitters)]
+      .sort((a, b) => Number(b[key]) - Number(a[key]))
+      .slice(0, 3);
+
+  const topPitchers = (key: keyof Pitcher, qualified = false, lowerIsBetter = false) =>
+    [...(qualified ? qualifiedPitchers : pitchers)]
+      .sort((a, b) =>
+        lowerIsBetter
+          ? Number(a[key]) - Number(b[key])
+          : Number(b[key]) - Number(a[key])
+      )
+      .slice(0, 3);
+
+  // Curated inherited-runner history from the private pitching tool.
+  // This page exposes only the underlying results, not the optimizer score.
+  const firemanLeaders = [
+    { playerId: 7, appearances: 6, inherited: 15, stranded: 9, successes: 3, partials: 3 },
+    { playerId: 15, appearances: 2, inherited: 3, stranded: 2, successes: 1, partials: 1 },
+    { playerId: 6, appearances: 1, inherited: 2, stranded: 2, successes: 1, partials: 0 },
+    { playerId: 3, appearances: 1, inherited: 1, stranded: 1, successes: 1, partials: 0 },
+    { playerId: 13, appearances: 1, inherited: 2, stranded: 0, successes: 0, partials: 0 },
+  ]
+    .map(f => ({ ...f, name: players.find(p => p.id === f.playerId)?.name ?? `Player ${f.playerId}` }))
+    .sort((a, b) =>
+      b.successes - a.successes ||
+      b.appearances - a.appearances ||
+      b.stranded - a.stranded ||
+      b.inherited - a.inherited
+    )
+    .slice(0, 3);
 
   const wins = games.filter(g => g.result === "W").length;
   const losses = games.filter(g => g.result === "L").length;
@@ -283,27 +332,85 @@ export default function SeasonStatsPage() {
         <section className="mt-8">
           <div className="text-xs font-bold uppercase tracking-widest text-emerald-400">Team leaders</div>
           <h2 className="mt-1 text-2xl font-black">Batting Leaders</h2>
-          <p className="mt-1 text-sm text-slate-500">Rate-stat leaders require 20 plate appearances.</p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
+          <p className="mt-1 text-sm text-slate-500">Top three in each category. Rate-stat leaders require 20 plate appearances.</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {[
-              ["AVG",maxH("avg"),(h: Hitter)=>dec(h.avg)],["OBP",maxH("obp"),(h: Hitter)=>dec(h.obp)],["SLG",maxH("slg"),(h: Hitter)=>dec(h.slg)],
-              ["OPS",maxH("ops"),(h: Hitter)=>dec(h.ops)],["Hits",maxAllH("hits"),(h: Hitter)=>String(h.hits)],["Runs",maxAllH("runs"),(h: Hitter)=>String(h.runs)],
-              ["RBI",maxAllH("rbi"),(h: Hitter)=>String(h.rbi)],["Doubles",maxAllH("doubles"),(h: Hitter)=>String(h.doubles)],["Home Runs",maxAllH("homeRuns"),(h: Hitter)=>String(h.homeRuns)],
-              ["Walks",maxAllH("walks"),(h: Hitter)=>String(h.walks)],["Stolen Bases",maxAllH("stolenBases"),(h: Hitter)=>String(h.stolenBases)],["QAB%",maxH("qabPct"),(h: Hitter)=>pct(h.qabPct)]
-            ].map(([label,leader,format]: any) => leader && <LeaderCard key={label} label={label} name={leader.name} value={format(leader)} />)}
+              ["AVG", topHitters("avg", true), (h: Hitter) => dec(h.avg)],
+              ["OBP", topHitters("obp", true), (h: Hitter) => dec(h.obp)],
+              ["SLG", topHitters("slg", true), (h: Hitter) => dec(h.slg)],
+              ["OPS", topHitters("ops", true), (h: Hitter) => dec(h.ops)],
+              ["Hits", topHitters("hits"), (h: Hitter) => String(h.hits)],
+              ["Runs", topHitters("runs"), (h: Hitter) => String(h.runs)],
+              ["RBI", topHitters("rbi"), (h: Hitter) => String(h.rbi)],
+              ["Doubles", topHitters("doubles"), (h: Hitter) => String(h.doubles)],
+              ["Home Runs", topHitters("homeRuns"), (h: Hitter) => String(h.homeRuns)],
+              ["Walks", topHitters("walks"), (h: Hitter) => String(h.walks)],
+              ["Stolen Bases", topHitters("stolenBases"), (h: Hitter) => String(h.stolenBases)],
+              ["QAB%", topHitters("qabPct", true), (h: Hitter) => pct(h.qabPct)],
+            ].map(([label, leaders, format]: any) => (
+              <TopThreeCard
+                key={label}
+                label={label}
+                leaders={(leaders as Hitter[]).map(h => ({ name: h.name, value: format(h) }))}
+              />
+            ))}
           </div>
         </section>
 
         <section className="mt-8">
           <div className="text-xs font-bold uppercase tracking-widest text-sky-400">Team leaders</div>
           <h2 className="mt-1 text-2xl font-black">Pitching Leaders</h2>
-          <p className="mt-1 text-sm text-slate-500">ERA and WHIP leaders require 10 innings pitched.</p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
+          <p className="mt-1 text-sm text-slate-500">Top three in each category. ERA, WHIP, K% and K/BB require 10 innings pitched.</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {[
-              ["ERA",minP("era"),(p: Pitcher)=>dec2(p.era)],["WHIP",minP("whip"),(p: Pitcher)=>dec2(p.whip)],["Strikeouts",maxP("strikeouts"),(p: Pitcher)=>String(p.strikeouts)],
-              ["K%",[...qualifiedPitchers].sort((a,b)=>b.kPct-a.kPct)[0],(p: Pitcher)=>pct(p.kPct)],["K/BB",[...qualifiedPitchers].sort((a,b)=>b.kbb-a.kbb)[0],(p: Pitcher)=>dec2(p.kbb)],
-              ["Innings Pitched",maxP("innings"),(p: Pitcher)=>dec2(p.innings)],["Wins",maxP("wins"),(p: Pitcher)=>String(p.wins)],["Saves",maxP("saves"),(p: Pitcher)=>String(p.saves)]
-            ].map(([label,leader,format]: any) => leader && <LeaderCard key={label} label={label} name={leader.name} value={format(leader)} />)}
+              ["ERA", topPitchers("era", true, true), (p: Pitcher) => dec2(p.era)],
+              ["WHIP", topPitchers("whip", true, true), (p: Pitcher) => dec2(p.whip)],
+              ["Strikeouts", topPitchers("strikeouts"), (p: Pitcher) => String(p.strikeouts)],
+              ["K%", topPitchers("kPct", true), (p: Pitcher) => pct(p.kPct)],
+              ["K/BB", topPitchers("kbb", true), (p: Pitcher) => dec2(p.kbb)],
+              ["Innings Pitched", topPitchers("innings"), (p: Pitcher) => dec2(p.innings)],
+              ["Wins", topPitchers("wins"), (p: Pitcher) => String(p.wins)],
+              ["Saves", topPitchers("saves"), (p: Pitcher) => String(p.saves)],
+            ].map(([label, leaders, format]: any) => (
+              <TopThreeCard
+                key={label}
+                label={label}
+                leaders={(leaders as Pitcher[]).map(p => ({ name: p.name, value: format(p) }))}
+              />
+            ))}
+
+            <div className="sm:col-span-2 lg:col-span-3 xl:col-span-4">
+              <div className="rounded-2xl border border-amber-500/30 bg-slate-900 p-5">
+                <div className="flex flex-wrap items-end justify-between gap-2">
+                  <div>
+                    <div className="text-[11px] font-bold uppercase tracking-widest text-amber-400">🔥 Fireman</div>
+                    <h3 className="mt-1 text-xl font-black text-white">Inherited-Runner Leaders</h3>
+                  </div>
+                  <div className="text-xs text-slate-500">Curated mid-inning relief appearances</div>
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  {firemanLeaders.map((f, index) => (
+                    <div key={f.playerId} className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+                      <div className="flex items-center gap-3">
+                        <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-black ${
+                          index === 0 ? "bg-amber-400 text-slate-950" : "bg-slate-800 text-slate-300"
+                        }`}>
+                          {index + 1}
+                        </div>
+                        <div className="font-black text-white">{f.name}</div>
+                      </div>
+                      <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                        <div><div className="text-xl font-black text-white">{f.appearances}</div><div className="text-[10px] uppercase tracking-wider text-slate-500">Jams</div></div>
+                        <div><div className="text-xl font-black text-white">{f.inherited}</div><div className="text-[10px] uppercase tracking-wider text-slate-500">Inherited</div></div>
+                        <div><div className="text-xl font-black text-amber-400">{f.stranded}</div><div className="text-[10px] uppercase tracking-wider text-slate-500">Stranded</div></div>
+                      </div>
+                      <div className="mt-3 text-center text-xs text-slate-500">{f.successes} clean escapes · {f.partials} partial</div>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-4 text-xs text-slate-500">Fireman ordering emphasizes repeated successful jam escapes and volume. It does not expose the private pitching-optimizer score.</p>
+              </div>
+            </div>
           </div>
         </section>
 
