@@ -286,10 +286,10 @@ export default function SeasonStatsPage() {
           <p className="mt-1 text-sm text-slate-500">Rate-stat leaders require 20 plate appearances.</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
             {[
-              ["AVG",maxH("avg"),h=>dec(h.avg)],["OBP",maxH("obp"),h=>dec(h.obp)],["SLG",maxH("slg"),h=>dec(h.slg)],
-              ["OPS",maxH("ops"),h=>dec(h.ops)],["Hits",maxAllH("hits"),h=>String(h.hits)],["Runs",maxAllH("runs"),h=>String(h.runs)],
-              ["RBI",maxAllH("rbi"),h=>String(h.rbi)],["Doubles",maxAllH("doubles"),h=>String(h.doubles)],["Home Runs",maxAllH("homeRuns"),h=>String(h.homeRuns)],
-              ["Walks",maxAllH("walks"),h=>String(h.walks)],["Stolen Bases",maxAllH("stolenBases"),h=>String(h.stolenBases)],["QAB%",maxH("qabPct"),h=>pct(h.qabPct)]
+              ["AVG",maxH("avg"),(h: Hitter)=>dec(h.avg)],["OBP",maxH("obp"),(h: Hitter)=>dec(h.obp)],["SLG",maxH("slg"),(h: Hitter)=>dec(h.slg)],
+              ["OPS",maxH("ops"),(h: Hitter)=>dec(h.ops)],["Hits",maxAllH("hits"),(h: Hitter)=>String(h.hits)],["Runs",maxAllH("runs"),(h: Hitter)=>String(h.runs)],
+              ["RBI",maxAllH("rbi"),(h: Hitter)=>String(h.rbi)],["Doubles",maxAllH("doubles"),(h: Hitter)=>String(h.doubles)],["Home Runs",maxAllH("homeRuns"),(h: Hitter)=>String(h.homeRuns)],
+              ["Walks",maxAllH("walks"),(h: Hitter)=>String(h.walks)],["Stolen Bases",maxAllH("stolenBases"),(h: Hitter)=>String(h.stolenBases)],["QAB%",maxH("qabPct"),(h: Hitter)=>pct(h.qabPct)]
             ].map(([label,leader,format]: any) => leader && <LeaderCard key={label} label={label} name={leader.name} value={format(leader)} />)}
           </div>
         </section>
@@ -300,9 +300,9 @@ export default function SeasonStatsPage() {
           <p className="mt-1 text-sm text-slate-500">ERA and WHIP leaders require 10 innings pitched.</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
             {[
-              ["ERA",minP("era"),p=>dec2(p.era)],["WHIP",minP("whip"),p=>dec2(p.whip)],["Strikeouts",maxP("strikeouts"),p=>String(p.strikeouts)],
-              ["K%",[...qualifiedPitchers].sort((a,b)=>b.kPct-a.kPct)[0],p=>pct(p.kPct)],["K/BB",[...qualifiedPitchers].sort((a,b)=>b.kbb-a.kbb)[0],p=>dec2(p.kbb)],
-              ["Innings Pitched",maxP("innings"),p=>dec2(p.innings)],["Wins",maxP("wins"),p=>String(p.wins)],["Saves",maxP("saves"),p=>String(p.saves)]
+              ["ERA",minP("era"),(p: Pitcher)=>dec2(p.era)],["WHIP",minP("whip"),(p: Pitcher)=>dec2(p.whip)],["Strikeouts",maxP("strikeouts"),(p: Pitcher)=>String(p.strikeouts)],
+              ["K%",[...qualifiedPitchers].sort((a,b)=>b.kPct-a.kPct)[0],(p: Pitcher)=>pct(p.kPct)],["K/BB",[...qualifiedPitchers].sort((a,b)=>b.kbb-a.kbb)[0],(p: Pitcher)=>dec2(p.kbb)],
+              ["Innings Pitched",maxP("innings"),(p: Pitcher)=>dec2(p.innings)],["Wins",maxP("wins"),(p: Pitcher)=>String(p.wins)],["Saves",maxP("saves"),(p: Pitcher)=>String(p.saves)]
             ].map(([label,leader,format]: any) => leader && <LeaderCard key={label} label={label} name={leader.name} value={format(leader)} />)}
           </div>
         </section>
