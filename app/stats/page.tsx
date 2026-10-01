@@ -94,6 +94,7 @@ type Pitcher = {
   wins: number;
   losses: number;
   saves: number;
+  wildPitches: number;
   hits: number;
   runs: number;
   earnedRuns: number;
@@ -346,6 +347,7 @@ export default function SeasonStatsPage() {
               ["Home Runs", topHitters("homeRuns"), (h: Hitter) => String(h.homeRuns)],
               ["Walks", topHitters("walks"), (h: Hitter) => String(h.walks)],
               ["Stolen Bases", topHitters("stolenBases"), (h: Hitter) => String(h.stolenBases)],
+              ["Strikeouts", topHitters("strikeouts"), (h: Hitter) => String(h.strikeouts)],
               ["QAB%", topHitters("qabPct", true), (h: Hitter) => pct(h.qabPct)],
             ].map(([label, leaders, format]: any) => (
               <TopThreeCard
@@ -371,6 +373,10 @@ export default function SeasonStatsPage() {
               ["Innings Pitched", topPitchers("innings"), (p: Pitcher) => dec2(p.innings)],
               ["Wins", topPitchers("wins"), (p: Pitcher) => String(p.wins)],
               ["Saves", topPitchers("saves"), (p: Pitcher) => String(p.saves)],
+              ["Walks Allowed", topPitchers("walks"), (p: Pitcher) => String(p.walks)],
+              ["BB / Inning", topPitchers("walksPerInning", true), (p: Pitcher) => dec2(p.walksPerInning)],
+              ["K / Inning", topPitchers("strikeoutsPerInning", true), (p: Pitcher) => dec2(p.strikeoutsPerInning)],
+              ["Wild Pitches", topPitchers("wildPitches"), (p: Pitcher) => String(p.wildPitches)],
             ].map(([label, leaders, format]: any) => (
               <TopThreeCard
                 key={label}
