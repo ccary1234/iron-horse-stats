@@ -57,6 +57,7 @@ type PitchingStat = {
   wins: number | null;
   losses: number | null;
   saves: number | null;
+  wild_pitches: number | null;
 };
 
 type Hitter = {
@@ -107,6 +108,8 @@ type Pitcher = {
   kbb: number;
   kPct: number;
   bbPct: number;
+  walksPerInning: number;
+  strikeoutsPerInning: number;
 };
 
 type HitterSort = keyof Hitter;
@@ -182,7 +185,7 @@ export default function SeasonStatsPage() {
         supabase.from("games").select("id, game_date, season, opponent, our_score, opponent_score, result").eq("season", 2026).order("game_date"),
         supabase.from("players").select("id, name, number").order("name"),
         supabase.from("batting_stats").select("game_id, player_id, pa, ab, runs, hits, singles, doubles, triples, home_runs, rbi, walks, intentional_walks, hbp, strikeouts, sacrifice_flies, sacrifice_bunts, stolen_bases, caught_stealing, pitches_seen, qab"),
-        supabase.from("pitching_stats").select("game_id, player_id, innings_pitched, batters_faced, hits_allowed, runs_allowed, earned_runs, walks, strikeouts, hbp, wins, losses, saves"),
+        supabase.from("pitching_stats").select("game_id, player_id, innings_pitched, batters_faced, hits_allowed, runs_allowed, earned_runs, walks, strikeouts, hbp, wild_pitches, wins, losses, saves"),
       ]);
       const err = g.error || p.error || b.error || pit.error;
       if (err) setError(err.message);
@@ -228,10 +231,12 @@ export default function SeasonStatsPage() {
       earnedRuns = sum("earned_runs"), bf = sum("batters_faced");
     return {
       playerId: player.id, name: player.name, number: player.number, appearances: rows.length, innings,
-      wins: sum("wins"), losses: sum("losses"), saves: sum("saves"), hits, runs: sum("runs_allowed"),
+      wins: sum("wins"), losses: sum("losses"), saves: sum("saves"), wildPitches: sum("wild_pitches"), hits, runs: sum("runs_allowed"),
       earnedRuns, walks, strikeouts, hbp: sum("hbp"), battersFaced: bf,
       era: innings ? earnedRuns * 9 / innings : 0, whip: innings ? (walks + hits) / innings : 0,
       kbb: walks ? strikeouts / walks : strikeouts, kPct: bf ? strikeouts / bf : 0, bbPct: bf ? walks / bf : 0,
+      walksPerInning: innings ? walks / innings : 0,
+      strikeoutsPerInning: innings ? strikeouts / innings : 0,
     };
   }).filter(p => p.appearances > 0), [players, pitching, gameIds]);
 
