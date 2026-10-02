@@ -351,12 +351,15 @@ export default function SeasonStatsPage() {
       );
     };
 
-    const teamWeightedRuns = hitters.reduce((sum, h) => sum + battingRunValue(h), 0);
-    const totalPA = hitters.reduce((sum, h) => sum + h.pa, 0);
-    const teamWeightedRunsPerPA = totalPA ? teamWeightedRuns / totalPA : 0;
-
-    // Replacement hitter is 20 runs / 600 PA below team average.
-    const replacementRunsPerPA = Math.max(teamWeightedRunsPerPA - 20 / 600, 0);
+    // League-calibrated replacement level from the uploaded STLMSBL dataset.
+    // Dataset: 190 players who appeared in at least 5 games.
+    // To reduce tiny-sample noise, the replacement pool uses the 116 hitters
+    // with at least 20 PA. The 20th percentile of their weighted batting
+    // production is 0.3043 runs per PA.
+    //
+    // IMPORTANT: This is intentionally a fixed LEAGUE baseline. It is NOT
+    // calculated from Iron Horse's hitters.
+    const replacementRunsPerPA = 0.3043;
 
     const totalPitchingIP = pitchers.reduce((sum, p) => sum + p.innings, 0);
     const totalPitchingER = pitchers.reduce((sum, p) => sum + p.earnedRuns, 0);
@@ -581,7 +584,7 @@ export default function SeasonStatsPage() {
           <div className="mt-4 grid gap-3 md:grid-cols-3">
             <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
               <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Hitting replacement level</div>
-              <div className="mt-1 text-sm text-slate-300">STLMSBL 20th percentile among hitters with 20+ PA (0.304 weighted runs/PA)</div>
+              <div className="mt-1 text-sm text-slate-300">STLMSBL 20th percentile among hitters with 20+ PA (0.3043 weighted runs/PA)</div>
             </div>
             <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
               <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Pitching replacement level</div>
