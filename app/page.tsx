@@ -43,1073 +43,497 @@ type BattingStat = {
   qab: number | null;
 };
 
-type PlayerSummary = {
+type PitchingStat = {
+  game_id: number;
+  player_id: number;
+  innings_pitched: number | string | null;
+  batters_faced: number | null;
+  hits_allowed: number | null;
+  runs_allowed: number | null;
+  earned_runs: number | null;
+  walks: number | null;
+  strikeouts: number | null;
+  hbp: number | null;
+  wins: number | null;
+  losses: number | null;
+  saves: number | null;
+  wild_pitches: number | null;
+};
+
+type Hitter = {
   playerId: number;
   name: string;
   number: string | number | null;
-
   games: number;
   pa: number;
   ab: number;
   runs: number;
   hits: number;
-  singles: number;
   doubles: number;
   triples: number;
   homeRuns: number;
-  xbh: number;
   rbi: number;
   walks: number;
   hbp: number;
   strikeouts: number;
   stolenBases: number;
   caughtStealing: number;
-  sacrificeFlies: number;
-  qab: number;
-  pitchesSeen: number;
-
   avg: number;
   obp: number;
   slg: number;
   ops: number;
-  bbPct: number;
-  kPct: number;
-  contactPct: number;
   qabPct: number;
-  stealRate: number;
   pitchesPerPA: number;
-  hrRate: number;
-  xbhRate: number;
-  rbiRate: number;
-
-  attendanceScore: number;
-  sampleFactor: number;
-  overallScore: number;
 };
 
+type Pitcher = {
+  playerId: number;
+  name: string;
+  number: string | number | null;
+  appearances: number;
+  innings: number;
+  wins: number;
+  losses: number;
+  saves: number;
+  wildPitches: number;
+  hits: number;
+  runs: number;
+  earnedRuns: number;
+  walks: number;
+  strikeouts: number;
+  hbp: number;
+  battersFaced: number;
+  era: number;
+  whip: number;
+  kbb: number;
+  kPct: number;
+  bbPct: number;
+  walksPerInning: number;
+  strikeoutsPerInning: number;
+};
+
+type HitterSort = keyof Hitter;
+type PitcherSort = keyof Pitcher;
+
 const n = (value: number | null | undefined) => Number(value ?? 0);
+const num = (value: number | string | null | undefined) => {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+const dec = (value: number, digits = 3) =>
+  Number.isFinite(value) ? value.toFixed(digits).replace(/^0/, "") : "—";
+const dec2 = (value: number) => (Number.isFinite(value) ? value.toFixed(2) : "—");
+const pct = (value: number) => (Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : "—");
 
-function pct(value: number) {
-  if (!Number.isFinite(value)) return ".000";
-  return value.toFixed(3).replace(/^0/, "");
+function Nav() {
+  return (
+    <nav className="flex flex-wrap rounded-xl border border-slate-800 bg-slate-900 p-1 text-sm">
+      <a href="/" className="rounded-lg px-4 py-2 text-slate-400 hover:bg-slate-800 hover:text-white">Run Maximizer</a>
+      <a href="/pitching" className="rounded-lg px-4 py-2 text-slate-400 hover:bg-slate-800 hover:text-white">Pitching Optimizer</a>
+      <a href="/stats" className="rounded-lg bg-slate-800 px-4 py-2 font-semibold text-white">Season Stats</a>
+    </nav>
+  );
 }
 
-function percent(value: number) {
-  if (!Number.isFinite(value)) return "0.0%";
-  return `${(value * 100).toFixed(1)}%`;
+function TopFiveCard({
+  label,
+  leaders,
+}: {
+  label: string;
+  leaders: { name: string; value: string; detail?: string }[];
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+      <div className="text-[11px] font-bold uppercase tracking-widest text-slate-500">{label}</div>
+      <div className="mt-3 space-y-3">
+        {leaders.slice(0, 5).map((leader, index) => (
+          <div key={`${label}-${leader.name}-${index}`} className="flex items-start gap-3">
+            <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black ${
+              index === 0 ? "bg-emerald-400 text-slate-950" : "bg-slate-800 text-slate-300"
+            }`}>
+              {index + 1}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-bold text-white">{leader.name}</div>
+              {leader.detail && <div className="mt-0.5 text-xs text-slate-500">{leader.detail}</div>}
+            </div>
+            <div className={`whitespace-nowrap font-black ${index === 0 ? "text-emerald-400" : "text-slate-300"}`}>
+              {leader.value}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
-function decimal(value: number) {
-  if (!Number.isFinite(value)) return "0.00";
-  return value.toFixed(2);
-}
-
-function clamp(value: number, min = 0, max = 1) {
-  return Math.min(Math.max(value, min), max);
-}
-
-/*
-  ORIGINAL CLAY FORMULA
-
-  The overallScore determines WHO makes the lineup.
-
-  The battingOrderScore determines WHERE each selected hitter bats.
-
-  Each batting-order spot has a different role and therefore uses
-  a different weighting profile.
-*/
-function battingOrderScore(player: PlayerSummary, spot: number) {
-  const pitchScore = clamp(player.pitchesPerPA / 5);
-  const speedScore = clamp(player.stealRate * 5);
-  const powerScore = clamp(player.slg / 1.25);
-  const opsScore = clamp(player.ops / 1.5);
-  const hrScore = clamp(player.hrRate * 10);
-  const xbhScore = clamp(player.xbhRate * 5);
-  const rbiScore = clamp(player.rbiRate * 3);
-
-  let score = 0;
-
-  // #1 — LEADOFF
-  if (spot === 1) {
-    score =
-      player.obp * 0.35 +
-      pitchScore * 0.2 +
-      speedScore * 0.15 +
-      player.bbPct * 0.1 +
-      player.qabPct * 0.08 +
-      player.contactPct * 0.1 +
-      player.attendanceScore * 0.02;
-  }
-
-  // #2 — TABLE SETTER / COMPLETE HITTER
-  else if (spot === 2) {
-    score =
-      player.obp * 0.28 +
-      player.contactPct * 0.17 +
-      player.qabPct * 0.15 +
-      powerScore * 0.14 +
-      player.avg * 0.1 +
-      pitchScore * 0.07 +
-      player.bbPct * 0.06 +
-      player.attendanceScore * 0.03;
-  }
-
-  // #3 — BEST BALANCED HITTER
-  else if (spot === 3) {
-    score =
-      opsScore * 0.28 +
-      player.obp * 0.22 +
-      powerScore * 0.22 +
-      player.avg * 0.12 +
-      player.qabPct * 0.08 +
-      player.contactPct * 0.06 +
-      player.attendanceScore * 0.02;
-  }
-
-  // #4 — CLEANUP
-  else if (spot === 4) {
-    score =
-      powerScore * 0.34 +
-      xbhScore * 0.17 +
-      hrScore * 0.15 +
-      rbiScore * 0.12 +
-      opsScore * 0.1 +
-      player.obp * 0.06 +
-      player.qabPct * 0.04 +
-      player.attendanceScore * 0.02;
-  }
-
-  // #5 — SECONDARY RUN PRODUCER
-  else if (spot === 5) {
-    score =
-      powerScore * 0.28 +
-      opsScore * 0.2 +
-      xbhScore * 0.15 +
-      rbiScore * 0.12 +
-      player.obp * 0.1 +
-      player.qabPct * 0.07 +
-      player.contactPct * 0.06 +
-      player.attendanceScore * 0.02;
-  }
-
-  // #6 — BEST REMAINING COMPLETE HITTER
-  else if (spot === 6) {
-    score =
-      opsScore * 0.24 +
-      player.obp * 0.2 +
-      powerScore * 0.18 +
-      player.avg * 0.1 +
-      player.qabPct * 0.1 +
-      player.contactPct * 0.1 +
-      speedScore * 0.05 +
-      player.attendanceScore * 0.03;
-  }
-
-  // #7 — CONTACT / QUALITY AB
-  else if (spot === 7) {
-    score =
-      player.contactPct * 0.23 +
-      player.qabPct * 0.2 +
-      player.obp * 0.2 +
-      opsScore * 0.12 +
-      player.avg * 0.1 +
-      pitchScore * 0.07 +
-      speedScore * 0.05 +
-      player.attendanceScore * 0.03;
-  }
-
-  // #8 — BEST REMAINING OFFENSIVE VALUE
-  else if (spot === 8) {
-    score =
-      opsScore * 0.22 +
-      player.obp * 0.2 +
-      player.contactPct * 0.17 +
-      player.qabPct * 0.15 +
-      player.avg * 0.1 +
-      powerScore * 0.08 +
-      speedScore * 0.05 +
-      player.attendanceScore * 0.03;
-  }
-
-  // #9 — SECOND LEADOFF TYPE
-  else if (spot === 9) {
-    score =
-      player.obp * 0.28 +
-      player.contactPct * 0.2 +
-      speedScore * 0.14 +
-      pitchScore * 0.12 +
-      player.bbPct * 0.08 +
-      player.qabPct * 0.08 +
-      player.avg * 0.07 +
-      player.attendanceScore * 0.03;
-  }
-
-  // 10+ hitter lineups use the general offensive score.
-  else {
-    score = player.overallScore;
-  }
-
-  return score * (0.65 + 0.35 * player.sampleFactor);
-}
-
-export default function Home() {
+export default function SeasonStatsPage() {
   const [games, setGames] = useState<Game[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
-  const [battingStats, setBattingStats] = useState<BattingStat[]>([]);
-
-  const [selectedGameIds, setSelectedGameIds] = useState<number[]>([]);
-  const [availablePlayerIds, setAvailablePlayerIds] = useState<number[]>([]);
-
-  const [minPA, setMinPA] = useState(0);
-  const [lineupSize, setLineupSize] = useState(9);
-
+  const [batting, setBatting] = useState<BattingStat[]>([]);
+  const [pitching, setPitching] = useState<PitchingStat[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [hitterSort, setHitterSort] = useState<HitterSort>("ops");
+  const [hitterAsc, setHitterAsc] = useState(false);
+  const [pitcherSort, setPitcherSort] = useState<PitcherSort>("innings");
+  const [pitcherAsc, setPitcherAsc] = useState(false);
 
   useEffect(() => {
-    async function loadData() {
-      setLoading(true);
-
-      const [
-        { data: gameData, error: gameError },
-        { data: playerData, error: playerError },
-        { data: battingData, error: battingError },
-      ] = await Promise.all([
-        supabase.from("games").select("*").order("game_date"),
-        supabase.from("players").select("*").order("name"),
-        supabase.from("batting_stats").select("*"),
+    async function load() {
+      const [g, p, b, pit] = await Promise.all([
+        supabase.from("games").select("id, game_date, season, opponent, our_score, opponent_score, result").eq("season", 2026).order("game_date"),
+        supabase.from("players").select("id, name, number").order("name"),
+        supabase.from("batting_stats").select("game_id, player_id, pa, ab, runs, hits, singles, doubles, triples, home_runs, rbi, walks, intentional_walks, hbp, strikeouts, sacrifice_flies, sacrifice_bunts, stolen_bases, caught_stealing, pitches_seen, qab"),
+        supabase.from("pitching_stats").select("game_id, player_id, innings_pitched, batters_faced, hits_allowed, runs_allowed, earned_runs, walks, strikeouts, hbp, wild_pitches, wins, losses, saves"),
       ]);
-
-      const loadError = gameError || playerError || battingError;
-
-      if (loadError) {
-        setError(loadError.message);
-        setLoading(false);
-        return;
+      const err = g.error || p.error || b.error || pit.error;
+      if (err) setError(err.message);
+      else {
+        setGames((g.data ?? []) as Game[]);
+        setPlayers((p.data ?? []) as Player[]);
+        setBatting((b.data ?? []) as BattingStat[]);
+        setPitching((pit.data ?? []) as PitchingStat[]);
       }
-
-      const loadedGames = (gameData ?? []) as Game[];
-      const loadedPlayers = (playerData ?? []) as Player[];
-
-      setGames(loadedGames);
-      setPlayers(loadedPlayers);
-      setBattingStats((battingData ?? []) as BattingStat[]);
-
-      setSelectedGameIds(loadedGames.map((game) => game.id));
-      setAvailablePlayerIds(loadedPlayers.map((player) => player.id));
-
       setLoading(false);
     }
-
-    loadData();
+    load();
   }, []);
 
-  const summaries = useMemo<PlayerSummary[]>(() => {
-    const selected = new Set(selectedGameIds);
+  const gameIds = useMemo(() => new Set(games.map(g => g.id)), [games]);
 
-    const basePlayers = players.map((player) => {
-      const rows = battingStats.filter(
-        (row) => row.player_id === player.id && selected.has(row.game_id)
-      );
+  const hitters = useMemo<Hitter[]>(() => players.map(player => {
+    const rows = batting.filter(r => r.player_id === player.id && gameIds.has(r.game_id));
+    const gamesPlayed = new Set(rows.map(r => r.game_id)).size;
+    const sum = (key: keyof BattingStat) => rows.reduce((s, r) => s + n(r[key] as number | null), 0);
+    const pa = sum("pa"), ab = sum("ab"), hits = sum("hits"), doubles = sum("doubles"),
+      triples = sum("triples"), hr = sum("home_runs"), walks = sum("walks"), hbp = sum("hbp"),
+      sf = sum("sacrifice_flies"), singles = sum("singles");
+    const avg = ab ? hits / ab : 0;
+    const obpDen = ab + walks + hbp + sf;
+    const obp = obpDen ? (hits + walks + hbp) / obpDen : 0;
+    const tb = singles + doubles * 2 + triples * 3 + hr * 4;
+    const slg = ab ? tb / ab : 0;
+    return {
+      playerId: player.id, name: player.name, number: player.number, games: gamesPlayed, pa, ab,
+      runs: sum("runs"), hits, doubles, triples, homeRuns: hr, rbi: sum("rbi"), walks, hbp,
+      strikeouts: sum("strikeouts"), stolenBases: sum("stolen_bases"), caughtStealing: sum("caught_stealing"),
+      avg, obp, slg, ops: obp + slg, qabPct: pa ? sum("qab") / pa : 0,
+      pitchesPerPA: pa ? sum("pitches_seen") / pa : 0,
+    };
+  }).filter(h => h.pa > 0), [players, batting, gameIds]);
 
-      const pa = rows.reduce((sum, row) => sum + n(row.pa), 0);
-      const ab = rows.reduce((sum, row) => sum + n(row.ab), 0);
-      const runs = rows.reduce((sum, row) => sum + n(row.runs), 0);
-      const hits = rows.reduce((sum, row) => sum + n(row.hits), 0);
-      const doubles = rows.reduce((sum, row) => sum + n(row.doubles), 0);
-      const triples = rows.reduce((sum, row) => sum + n(row.triples), 0);
-      const homeRuns = rows.reduce((sum, row) => sum + n(row.home_runs), 0);
-      const rbi = rows.reduce((sum, row) => sum + n(row.rbi), 0);
-      const walks = rows.reduce((sum, row) => sum + n(row.walks), 0);
-      const hbp = rows.reduce((sum, row) => sum + n(row.hbp), 0);
-      const strikeouts = rows.reduce((sum, row) => sum + n(row.strikeouts), 0);
-      const stolenBases = rows.reduce((sum, row) => sum + n(row.stolen_bases), 0);
-      const caughtStealing = rows.reduce(
-        (sum, row) => sum + n(row.caught_stealing),
-        0
-      );
-      const sacrificeFlies = rows.reduce(
-        (sum, row) => sum + n(row.sacrifice_flies),
-        0
-      );
-      const qab = rows.reduce((sum, row) => sum + n(row.qab), 0);
-      const pitchesSeen = rows.reduce((sum, row) => sum + n(row.pitches_seen), 0);
+  const pitchers = useMemo<Pitcher[]>(() => players.map(player => {
+    const rows = pitching.filter(r => r.player_id === player.id && gameIds.has(r.game_id));
+    const sum = (key: keyof PitchingStat) => rows.reduce((s, r) => s + n(r[key] as number | null), 0);
+    const innings = rows.reduce((s, r) => s + num(r.innings_pitched), 0);
+    const hits = sum("hits_allowed"), walks = sum("walks"), strikeouts = sum("strikeouts"),
+      earnedRuns = sum("earned_runs"), bf = sum("batters_faced");
+    return {
+      playerId: player.id, name: player.name, number: player.number, appearances: rows.length, innings,
+      wins: sum("wins"), losses: sum("losses"), saves: sum("saves"), wildPitches: sum("wild_pitches"), hits, runs: sum("runs_allowed"),
+      earnedRuns, walks, strikeouts, hbp: sum("hbp"), battersFaced: bf,
+      era: innings ? earnedRuns * 9 / innings : 0, whip: innings ? (walks + hits) / innings : 0,
+      kbb: walks ? strikeouts / walks : strikeouts, kPct: bf ? strikeouts / bf : 0, bbPct: bf ? walks / bf : 0,
+      walksPerInning: innings ? walks / innings : 0,
+      strikeoutsPerInning: innings ? strikeouts / innings : 0,
+    };
+  }).filter(p => p.appearances > 0), [players, pitching, gameIds]);
 
-      const singlesFromRows = rows.reduce(
-        (sum, row) => sum + n(row.singles),
-        0
-      );
+  const sortedHitters = useMemo(() => [...hitters].sort((a,b) => {
+    const av = a[hitterSort], bv = b[hitterSort];
+    const cmp = typeof av === "string" ? String(av).localeCompare(String(bv)) : Number(av) - Number(bv);
+    return hitterAsc ? cmp : -cmp;
+  }), [hitters, hitterSort, hitterAsc]);
 
-      const singles =
-        singlesFromRows ||
-        Math.max(hits - doubles - triples - homeRuns, 0);
+  const sortedPitchers = useMemo(() => [...pitchers].sort((a,b) => {
+    const av = a[pitcherSort], bv = b[pitcherSort];
+    const cmp = typeof av === "string" ? String(av).localeCompare(String(bv)) : Number(av) - Number(bv);
+    return pitcherAsc ? cmp : -cmp;
+  }), [pitchers, pitcherSort, pitcherAsc]);
 
-      const xbh = doubles + triples + homeRuns;
+  const setHS = (key: HitterSort) => {
+    if (key === hitterSort) setHitterAsc(v => !v); else { setHitterSort(key); setHitterAsc(false); }
+  };
+  const setPS = (key: PitcherSort) => {
+    if (key === pitcherSort) setPitcherAsc(v => !v); else { setPitcherSort(key); setPitcherAsc(false); }
+  };
 
-      const totalBases =
-        singles +
-        doubles * 2 +
-        triples * 3 +
-        homeRuns * 4;
+  const qualifiedHitters = hitters.filter(h => h.pa >= 20);
+  const qualifiedPitchers = pitchers.filter(p => p.innings >= 10);
 
-      const avg = ab > 0 ? hits / ab : 0;
+  const topHitters = (key: keyof Hitter, qualified = false) =>
+    [...(qualified ? qualifiedHitters : hitters)]
+      .sort((a, b) => Number(b[key]) - Number(a[key]))
+      .slice(0, 5);
 
-      const obpDenominator =
-        ab +
-        walks +
-        hbp +
-        sacrificeFlies;
+  const topPitchers = (key: keyof Pitcher, qualified = false, lowerIsBetter = false) =>
+    [...(qualified ? qualifiedPitchers : pitchers)]
+      .sort((a, b) =>
+        lowerIsBetter
+          ? Number(a[key]) - Number(b[key])
+          : Number(b[key]) - Number(a[key])
+      )
+      .slice(0, 5);
 
-      const obp =
-        obpDenominator > 0
-          ? (hits + walks + hbp) / obpDenominator
-          : 0;
+  // Curated inherited-runner history from the private pitching tool.
+  // This page exposes only the underlying results, not the optimizer score.
+  const firemanLeaders = [
+    { playerId: 7, appearances: 6, inherited: 15, stranded: 9, successes: 3, partials: 3 },
+    { playerId: 15, appearances: 2, inherited: 3, stranded: 2, successes: 1, partials: 1 },
+    { playerId: 6, appearances: 1, inherited: 2, stranded: 2, successes: 1, partials: 0 },
+    { playerId: 3, appearances: 1, inherited: 1, stranded: 1, successes: 1, partials: 0 },
+    { playerId: 13, appearances: 1, inherited: 2, stranded: 0, successes: 0, partials: 0 },
+  ]
+    .map(f => ({ ...f, name: players.find(p => p.id === f.playerId)?.name ?? `Player ${f.playerId}` }))
+    .sort((a, b) =>
+      b.successes - a.successes ||
+      b.appearances - a.appearances ||
+      b.stranded - a.stranded ||
+      b.inherited - a.inherited
+    )
+    .slice(0, 5);
 
-      const slg = ab > 0 ? totalBases / ab : 0;
-      const ops = obp + slg;
+  const wins = games.filter(g => g.result === "W").length;
+  const losses = games.filter(g => g.result === "L").length;
+  const runsFor = games.reduce((s,g) => s + n(g.our_score), 0);
+  const runsAgainst = games.reduce((s,g) => s + n(g.opponent_score), 0);
+  const teamAB = hitters.reduce((s,h) => s+h.ab,0), teamH = hitters.reduce((s,h) => s+h.hits,0);
+  const teamBB = hitters.reduce((s,h) => s+h.walks,0), teamHBP = hitters.reduce((s,h) => s+h.hbp,0);
+  const teamPA = hitters.reduce((s,h) => s+h.pa,0);
+  const teamAVG = teamAB ? teamH/teamAB : 0;
+  const teamOBP = teamPA ? (teamH+teamBB+teamHBP)/teamPA : 0;
 
-      const bbPct = pa > 0 ? walks / pa : 0;
-      const kPct = pa > 0 ? strikeouts / pa : 0;
-      const contactPct = pa > 0 ? 1 - strikeouts / pa : 0;
-      const qabPct = pa > 0 ? qab / pa : 0;
+  // Team-specific estimated WAR. This is intentionally labeled "Estimated WAR":
+  // it is not FanGraphs/Baseball-Reference WAR because our database lacks
+  // defensive runs, positional adjustments, park factors and league baselines.
+  const warRows = useMemo(() => {
+    const hitterById = new Map(hitters.map(h => [h.playerId, h]));
+    const pitcherById = new Map(pitchers.map(p => [p.playerId, p]));
+    const ids = new Set([...hitterById.keys(), ...pitcherById.keys()]);
 
-      const stealRate =
-        pa > 0
-          ? Math.max(
-              (stolenBases - caughtStealing * 0.5) / pa,
-              0
-            )
-          : 0;
+    const teamWobaDen = hitters.reduce((sum, h) => sum + h.ab + h.walks + h.hbp, 0);
+    const teamWobaNum = hitters.reduce((sum, h) => {
+      const singles = Math.max(h.hits - h.doubles - h.triples - h.homeRuns, 0);
+      return sum + 0.69*h.walks + 0.72*h.hbp + 0.89*singles + 1.27*h.doubles + 1.62*h.triples + 2.10*h.homeRuns;
+    }, 0);
+    const teamWoba = teamWobaDen ? teamWobaNum / teamWobaDen : 0.32;
+    const totalPitchingIP = pitchers.reduce((sum,p) => sum + p.innings, 0);
+    const teamPitchingERA = totalPitchingIP
+      ? pitchers.reduce((sum,p) => sum + p.earnedRuns, 0) * 9 / totalPitchingIP
+      : 0;
 
-      const pitchesPerPA = pa > 0 ? pitchesSeen / pa : 0;
-      const hrRate = pa > 0 ? homeRuns / pa : 0;
-      const xbhRate = pa > 0 ? xbh / pa : 0;
-      const rbiRate = pa > 0 ? rbi / pa : 0;
+    return [...ids].map(playerId => {
+      const h = hitterById.get(playerId);
+      const p = pitcherById.get(playerId);
+      let battingRuns = 0, baserunningRuns = 0, pitchingRuns = 0;
 
-      return {
-        playerId: player.id,
-        name: player.name,
-        number: player.number,
-
-        games: rows.length,
-        pa,
-        ab,
-        runs,
-        hits,
-        singles,
-        doubles,
-        triples,
-        homeRuns,
-        xbh,
-        rbi,
-        walks,
-        hbp,
-        strikeouts,
-        stolenBases,
-        caughtStealing,
-        sacrificeFlies,
-        qab,
-        pitchesSeen,
-
-        avg,
-        obp,
-        slg,
-        ops,
-        bbPct,
-        kPct,
-        contactPct,
-        qabPct,
-        stealRate,
-        pitchesPerPA,
-        hrRate,
-        xbhRate,
-        rbiRate,
-      };
-    });
-
-    const maxGames = Math.max(
-      1,
-      ...basePlayers.map((player) => player.games)
-    );
-
-    return basePlayers
-      .map((player) => {
-        const attendanceScore = player.games / maxGames;
-        const sampleFactor = Math.min(player.pa / 20, 1);
-
-        /*
-          GENERAL HITTER SCORE
-
-          This decides WHO makes the lineup.
-
-          49% OBP
-          34% SLG
-          10% contact
-           5% adjusted baserunning
-           2% attendance
-        */
-        const speedScore = clamp(player.stealRate * 5);
-
-        /*
-          GENERAL HITTER SCORE
-
-          This decides WHO makes the lineup.
-
-          49% OBP
-          34% SLG
-          10% contact
-           5% adjusted baserunning
-           2% attendance
-
-          The goal is to keep lineup selection focused on
-          actual offensive production while still giving a
-          very small nod to reliability/availability.
-        */
-        const rawOverallScore =
-          player.obp * 0.49 +
-          player.slg * 0.34 +
-          player.contactPct * 0.10 +
-          speedScore * 0.05 +
-          attendanceScore * 0.02;
-
-        return {
-          ...player,
-          attendanceScore,
-          sampleFactor,
-          overallScore:
-            rawOverallScore *
-            (0.65 + 0.35 * sampleFactor),
-        };
-      })
-      .filter((player) => player.pa >= minPA)
-      .sort((a, b) => b.overallScore - a.overallScore);
-  }, [
-    players,
-    battingStats,
-    selectedGameIds,
-    minPA,
-  ]);
-
-  const rankedAvailablePlayers = useMemo(() => {
-    const available = new Set(availablePlayerIds);
-
-    return summaries
-      .filter((player) => available.has(player.playerId))
-      .sort((a, b) => b.overallScore - a.overallScore);
-  }, [summaries, availablePlayerIds]);
-
-  /*
-    STEP 1:
-    Pick the hitters who make the lineup using overallScore.
-  */
-  const selectedLineupPlayers = useMemo(() => {
-    return rankedAvailablePlayers.slice(0, lineupSize);
-  }, [rankedAvailablePlayers, lineupSize]);
-
-  /*
-    STEP 2:
-    Assign those selected hitters to batting-order roles.
-
-    Priority:
-    1. Leadoff
-    2. Cleanup
-    3. #2
-    4. #3
-    5. #5
-    6. #6
-    7. #9
-    8. #7
-    9. #8
-
-    This preserves the original Clay Formula logic.
-  */
-  const recommendedLineup = useMemo(() => {
-    const remaining = [...selectedLineupPlayers];
-    const assignments = new Map<number, PlayerSummary>();
-
-    const specializedPriority = [
-      1,
-      4,
-      2,
-      3,
-      5,
-      6,
-      9,
-      7,
-      8,
-    ].filter((spot) => spot <= lineupSize);
-
-    for (let spot = 10; spot <= lineupSize; spot++) {
-      specializedPriority.push(spot);
-    }
-
-    specializedPriority.forEach((spot) => {
-      if (remaining.length === 0) return;
-
-      const bestPlayer = [...remaining].sort(
-        (a, b) =>
-          battingOrderScore(b, spot) -
-          battingOrderScore(a, spot)
-      )[0];
-
-      assignments.set(spot, bestPlayer);
-
-      const index = remaining.findIndex(
-        (player) => player.playerId === bestPlayer.playerId
-      );
-
-      if (index >= 0) {
-        remaining.splice(index, 1);
+      if (h) {
+        const singles = Math.max(h.hits - h.doubles - h.triples - h.homeRuns, 0);
+        const den = h.ab + h.walks + h.hbp;
+        const playerWoba = den
+          ? (0.69*h.walks + 0.72*h.hbp + 0.89*singles + 1.27*h.doubles + 1.62*h.triples + 2.10*h.homeRuns) / den
+          : teamWoba;
+        battingRuns = ((playerWoba - teamWoba) / 1.15) * h.pa;
+        baserunningRuns = h.stolenBases * 0.20 - h.caughtStealing * 0.40;
       }
-    });
+      if (p && p.innings > 0) pitchingRuns = ((teamPitchingERA - p.era) / 9) * p.innings;
 
-    return Array.from(
-      {
-        length: Math.min(
-          lineupSize,
-          selectedLineupPlayers.length
-        ),
-      },
-      (_, index) => assignments.get(index + 1)
-    ).filter(
-      (player): player is PlayerSummary => Boolean(player)
-    );
-  }, [selectedLineupPlayers, lineupSize]);
+      const replacementRuns = (h?.pa ?? 0) * 0.015 + (p?.innings ?? 0) * 0.10;
+      const player = players.find(x => x.id === playerId);
+      return {
+        playerId,
+        name: player?.name ?? `Player ${playerId}`,
+        battingRuns,
+        baserunningRuns,
+        pitchingRuns,
+        replacementRuns,
+        war: (battingRuns + baserunningRuns + pitchingRuns + replacementRuns) / 10,
+      };
+    }).sort((a,b) => b.war - a.war);
+  }, [hitters, pitchers, players]);
 
-  const benchPlayers = useMemo(() => {
-    const lineupIds = new Set(
-      selectedLineupPlayers.map((player) => player.playerId)
-    );
+  const hitterHeaders: [string,HitterSort][] = [
+    ["Player","name"],["G","games"],["PA","pa"],["AB","ab"],["R","runs"],["H","hits"],["2B","doubles"],
+    ["3B","triples"],["HR","homeRuns"],["RBI","rbi"],["BB","walks"],["HBP","hbp"],["SO","strikeouts"],
+    ["SB","stolenBases"],["CS","caughtStealing"],["AVG","avg"],["OBP","obp"],["SLG","slg"],["OPS","ops"],
+    ["QAB%","qabPct"],["P/PA","pitchesPerPA"]
+  ];
+  const pitcherHeaders: [string,PitcherSort][] = [
+    ["Pitcher","name"],["APP","appearances"],["IP","innings"],["W","wins"],["L","losses"],["SV","saves"],
+    ["H","hits"],["R","runs"],["ER","earnedRuns"],["BB","walks"],["K","strikeouts"],["HBP","hbp"],
+    ["ERA","era"],["WHIP","whip"],["K/BB","kbb"],["K%","kPct"],["BB%","bbPct"]
+  ];
 
-    return rankedAvailablePlayers.filter(
-      (player) => !lineupIds.has(player.playerId)
-    );
-  }, [rankedAvailablePlayers, selectedLineupPlayers]);
-
-  function toggleGame(id: number) {
-    setSelectedGameIds((current) =>
-      current.includes(id)
-        ? current.filter((gameId) => gameId !== id)
-        : [...current, id]
-    );
-  }
-
-  function togglePlayer(id: number) {
-    setAvailablePlayerIds((current) =>
-      current.includes(id)
-        ? current.filter((playerId) => playerId !== id)
-        : [...current, id]
-    );
-  }
-
-  if (loading) {
-    return (
-      <main className="min-h-screen bg-slate-950 p-8 text-white">
-        Loading Iron Horse Run Maximizer...
-      </main>
-    );
-  }
-
-  if (error) {
-    return (
-      <main className="min-h-screen bg-slate-950 p-8 text-white">
-        <h1 className="text-3xl font-bold">
-          Iron Horse Run Maximizer
-        </h1>
-
-        <p className="mt-6 text-red-400">
-          {error}
-        </p>
-      </main>
-    );
-  }
+  if (loading) return <main className="min-h-screen bg-slate-950 p-8 text-white">Loading 2026 season stats...</main>;
+  if (error) return <main className="min-h-screen bg-slate-950 p-8 text-white"><h1 className="text-3xl font-bold">2026 Season Stats</h1><p className="mt-6 text-red-400">{error}</p></main>;
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="mx-auto max-w-7xl p-6 md:p-10">
-
-        {/* HEADER */}
-
-        <div className="mb-8">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="inline-flex rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-              Iron Horse Baseball · 2026
-            </div>
-
-            <nav className="flex rounded-xl border border-slate-800 bg-slate-900 p-1 text-sm">
-              <a
-                href="/"
-                className="rounded-lg bg-slate-800 px-4 py-2 font-semibold text-white"
-              >
-                Run Maximizer
-              </a>
-              <a
-                href="/pitching"
-                className="rounded-lg px-4 py-2 text-slate-400 hover:bg-slate-800 hover:text-white"
-              >
-                Pitching Optimizer
-              </a>
-            </nav>
-          </div>
-
-          <h1 className="mt-5 text-4xl font-black tracking-tight md:text-6xl">
-            Iron Horse
-            <span className="block text-slate-300">
-              Run Maximizer
-            </span>
-          </h1>
-
-          <p className="mt-4 max-w-3xl text-lg leading-8 text-slate-400">
-            A weighted lineup optimization engine built to maximize run production.
-            Select the games that matter, mark who is available, choose how many
-            hitters you want in the order, and the Clay Formula builds the lineup
-            around the job of each batting spot.
-          </p>
+      <div className="mx-auto max-w-[1500px] p-5 md:p-10">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-[.2em] text-slate-400">Iron Horse Baseball · 2026</div>
+          <Nav />
         </div>
+        <h1 className="mt-6 text-4xl font-black tracking-tight md:text-6xl">2026 Season <span className="text-slate-300">Stats</span></h1>
+        <p className="mt-3 max-w-3xl text-slate-400">Full-season team and player statistics. No lineup or pitching recommendations—just the numbers from the 2026 season.</p>
 
-        <section className="grid gap-6 lg:grid-cols-2">
-
-          {/* GAME SELECTOR */}
-
-          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-widest text-slate-500">
-                  Step 01
-                </div>
-
-                <h2 className="mt-1 text-xl font-bold">
-                  Choose the Competition
-                </h2>
-
-                <p className="mt-1 text-sm text-slate-400">
-                  Only checked games feed the lineup model.
-                </p>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() =>
-                    setSelectedGameIds(games.map((game) => game.id))
-                  }
-                  className="rounded-lg bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700"
-                >
-                  All
-                </button>
-
-                <button
-                  onClick={() => setSelectedGameIds([])}
-                  className="rounded-lg bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700"
-                >
-                  None
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-5 max-h-96 space-y-2 overflow-y-auto">
-              {games.map((game) => (
-                <label
-                  key={game.id}
-                  className="flex cursor-pointer items-center justify-between gap-4 rounded-xl bg-slate-950 px-4 py-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="checkbox"
-                      checked={selectedGameIds.includes(game.id)}
-                      onChange={() => toggleGame(game.id)}
-                      className="h-4 w-4"
-                    />
-
-                    <div>
-                      <div className="font-medium">
-                        {game.opponent}
-                      </div>
-
-                      <div className="text-xs text-slate-500">
-                        {new Date(
-                          `${game.game_date}T12:00:00`
-                        ).toLocaleDateString()}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div
-                    className={
-                      game.result === "W"
-                        ? "font-semibold text-green-400"
-                        : game.result === "L"
-                        ? "font-semibold text-red-400"
-                        : "font-semibold text-slate-300"
-                    }
-                  >
-                    {game.result} {game.our_score}-{game.opponent_score}
-                  </div>
-                </label>
-              ))}
-            </div>
-
-            <p className="mt-4 text-sm text-slate-400">
-              {selectedGameIds.length} of {games.length} games selected
-            </p>
-          </div>
-
-          {/* AVAILABILITY */}
-
-          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-widest text-slate-500">
-                  Step 02
-                </div>
-
-                <h2 className="mt-1 text-xl font-bold">
-                  Set Tonight&apos;s Roster
-                </h2>
-
-                <p className="mt-1 text-sm text-slate-400">
-                  Only checked players can make the lineup.
-                </p>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() =>
-                    setAvailablePlayerIds(players.map((player) => player.id))
-                  }
-                  className="rounded-lg bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700"
-                >
-                  All
-                </button>
-
-                <button
-                  onClick={() => setAvailablePlayerIds([])}
-                  className="rounded-lg bg-slate-800 px-3 py-2 text-sm hover:bg-slate-700"
-                >
-                  None
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {players.map((player) => (
-                <label
-                  key={player.id}
-                  className="flex cursor-pointer items-center gap-3 rounded-xl bg-slate-950 px-4 py-3"
-                >
-                  <input
-                    type="checkbox"
-                    checked={availablePlayerIds.includes(player.id)}
-                    onChange={() => togglePlayer(player.id)}
-                    className="h-4 w-4"
-                  />
-
-                  <span>
-                    {player.number ? `#${player.number} ` : ""}
-                    {player.name}
-                  </span>
-                </label>
-              ))}
-            </div>
-
-            <p className="mt-4 text-sm text-slate-400">
-              {availablePlayerIds.length} players available
-            </p>
-          </div>
+        <section className="mt-7 grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-8">
+          {[["Record",`${wins}-${losses}`],["Games",String(games.length)],["Runs",String(runsFor)],["Runs Allowed",String(runsAgainst)],
+            ["Run Diff",`${runsFor-runsAgainst>=0?"+":""}${runsFor-runsAgainst}`],["Team AVG",dec(teamAVG)],["Team OBP",dec(teamOBP)],["Team SB",String(hitters.reduce((s,h)=>s+h.stolenBases,0))]
+          ].map(([label,value]) => <div key={label} className="rounded-2xl border border-slate-800 bg-slate-900 p-4"><div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{label}</div><div className="mt-2 text-2xl font-black">{value}</div></div>)}
         </section>
 
-        {/* RECOMMENDED LINEUP */}
-
-        <section className="mt-6 rounded-2xl border border-slate-700 bg-slate-900 p-6">
-          <div className="flex flex-wrap items-start justify-between gap-5">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-widest text-slate-500">
-                Step 03 · Clay Formula Output
-              </div>
-
-              <h2 className="mt-1 text-3xl font-black">
-                Maximum-Run Weighted Lineup
-              </h2>
-
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-                The model first identifies the strongest available hitters,
-                then assigns them to batting-order roles using the original
-                weighted Clay Formula.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-4">
-              <label className="flex items-center gap-3 text-sm">
-                Batters
-
-                <input
-                  type="number"
-                  min="1"
-                  max={availablePlayerIds.length || 1}
-                  value={lineupSize}
-                  onChange={(e) =>
-                    setLineupSize(
-                      Math.max(
-                        1,
-                        Math.min(
-                          availablePlayerIds.length || 1,
-                          Number(e.target.value) || 1
-                        )
-                      )
-                    )
-                  }
-                  className="w-20 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2"
-                />
-              </label>
-
-              <label className="flex items-center gap-3 text-sm">
-                Minimum PA
-
-                <input
-                  type="number"
-                  min="0"
-                  value={minPA}
-                  onChange={(e) =>
-                    setMinPA(Number(e.target.value) || 0)
-                  }
-                  className="w-20 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2"
-                />
-              </label>
-            </div>
-          </div>
-
-          <div className="mt-6 max-w-4xl space-y-3">
-            {recommendedLineup.map((player, index) => (
-              <div
-                key={player.playerId}
-                className="flex items-center gap-4 rounded-xl bg-slate-950 px-5 py-4"
-              >
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-lg font-black">
-                  {index + 1}
-                </div>
-
-                <div>
-                  <div className="text-lg font-semibold">
-                    {player.number ? `#${player.number} ` : ""}
-                    {player.name}
-                  </div>
-
-                  <div className="mt-1 text-sm text-slate-400">
-                    {player.pa} PA
-                    {" · "}
-                    {pct(player.avg)} AVG
-                    {" · "}
-                    {pct(player.obp)} OBP
-                    {" · "}
-                    {pct(player.slg)} SLG
-                    {" · "}
-                    {pct(player.ops)} OPS
-                    {" · "}
-                    {player.stolenBases} SB
-                    {" · "}
-                    {decimal(player.pitchesPerPA)} P/PA
-                  </div>
-                </div>
-              </div>
+        <section className="mt-8">
+          <div className="text-xs font-bold uppercase tracking-widest text-emerald-400">Team leaders</div>
+          <h2 className="mt-1 text-2xl font-black">Batting Leaders</h2>
+          <p className="mt-1 text-sm text-slate-500">Top five in each category. Rate-stat leaders require 20 plate appearances.</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {[
+              ["AVG", topHitters("avg", true), (h: Hitter) => dec(h.avg)],
+              ["OBP", topHitters("obp", true), (h: Hitter) => dec(h.obp)],
+              ["SLG", topHitters("slg", true), (h: Hitter) => dec(h.slg)],
+              ["OPS", topHitters("ops", true), (h: Hitter) => dec(h.ops)],
+              ["Hits", topHitters("hits"), (h: Hitter) => String(h.hits)],
+              ["Runs", topHitters("runs"), (h: Hitter) => String(h.runs)],
+              ["RBI", topHitters("rbi"), (h: Hitter) => String(h.rbi)],
+              ["Doubles", topHitters("doubles"), (h: Hitter) => String(h.doubles)],
+              ["Home Runs", topHitters("homeRuns"), (h: Hitter) => String(h.homeRuns)],
+              ["Walks", topHitters("walks"), (h: Hitter) => String(h.walks)],
+              ["Stolen Bases", topHitters("stolenBases"), (h: Hitter) => String(h.stolenBases)],
+              ["Strikeouts", topHitters("strikeouts"), (h: Hitter) => String(h.strikeouts)],
+              ["QAB%", topHitters("qabPct", true), (h: Hitter) => pct(h.qabPct)],
+            ].map(([label, leaders, format]: any) => (
+              <TopFiveCard
+                key={label}
+                label={label}
+                leaders={(leaders as Hitter[]).map(h => ({ name: h.name, value: format(h) }))}
+              />
             ))}
           </div>
-
-          {benchPlayers.length > 0 && (
-            <div className="mt-8 border-t border-slate-800 pt-6">
-              <h3 className="font-semibold text-slate-300">
-                Available Players Outside the Recommended Lineup
-              </h3>
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                {benchPlayers.map((player) => (
-                  <div
-                    key={player.playerId}
-                    className="rounded-lg bg-slate-950 px-3 py-2 text-sm text-slate-400"
-                  >
-                    {player.number ? `#${player.number} ` : ""}
-                    {player.name}
-                    {" · "}
-                    {pct(player.ops)} OPS
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </section>
 
-        {/* PERFORMANCE TABLE */}
+        <section className="mt-8">
+          <div className="text-xs font-bold uppercase tracking-widest text-sky-400">Team leaders</div>
+          <h2 className="mt-1 text-2xl font-black">Pitching Leaders</h2>
+          <p className="mt-1 text-sm text-slate-500">Top five in each category. ERA, WHIP, K% and K/BB require 10 innings pitched.</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {[
+              ["ERA", topPitchers("era", true, true), (p: Pitcher) => dec2(p.era)],
+              ["WHIP", topPitchers("whip", true, true), (p: Pitcher) => dec2(p.whip)],
+              ["Strikeouts", topPitchers("strikeouts"), (p: Pitcher) => String(p.strikeouts)],
+              ["K%", topPitchers("kPct", true), (p: Pitcher) => pct(p.kPct)],
+              ["K/BB", topPitchers("kbb", true), (p: Pitcher) => dec2(p.kbb)],
+              ["Innings Pitched", topPitchers("innings"), (p: Pitcher) => dec2(p.innings)],
+              ["Wins", topPitchers("wins"), (p: Pitcher) => String(p.wins)],
+              ["Saves", topPitchers("saves"), (p: Pitcher) => String(p.saves)],
+              ["Walks Allowed", topPitchers("walks"), (p: Pitcher) => String(p.walks)],
+              ["BB / Inning", topPitchers("walksPerInning", true), (p: Pitcher) => dec2(p.walksPerInning)],
+              ["K / Inning", topPitchers("strikeoutsPerInning", true), (p: Pitcher) => dec2(p.strikeoutsPerInning)],
+              ["Wild Pitches", topPitchers("wildPitches"), (p: Pitcher) => String(p.wildPitches)],
+            ].map(([label, leaders, format]: any) => (
+              <TopFiveCard
+                key={label}
+                label={label}
+                leaders={(leaders as Pitcher[]).map(p => ({ name: p.name, value: format(p) }))}
+              />
+            ))}
 
-        <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900 p-6">
-          <div>
-            <h2 className="text-xl font-bold">
-              Player Performance
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-400">
-              All rate stats are recalculated from the games selected above.
-            </p>
+            <div className="sm:col-span-2 lg:col-span-3 xl:col-span-4">
+              <div className="rounded-2xl border border-amber-500/30 bg-slate-900 p-5">
+                <div className="flex flex-wrap items-end justify-between gap-2">
+                  <div>
+                    <div className="text-[11px] font-bold uppercase tracking-widest text-amber-400">🔥 Fireman</div>
+                    <h3 className="mt-1 text-xl font-black text-white">Inherited-Runner Leaders</h3>
+                  </div>
+                  <div className="text-xs text-slate-500">Curated mid-inning relief appearances</div>
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  {firemanLeaders.map((f, index) => (
+                    <div key={f.playerId} className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+                      <div className="flex items-center gap-3">
+                        <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-black ${
+                          index === 0 ? "bg-amber-400 text-slate-950" : "bg-slate-800 text-slate-300"
+                        }`}>
+                          {index + 1}
+                        </div>
+                        <div className="font-black text-white">{f.name}</div>
+                      </div>
+                      <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                        <div><div className="text-xl font-black text-white">{f.appearances}</div><div className="text-[10px] uppercase tracking-wider text-slate-500">Jams</div></div>
+                        <div><div className="text-xl font-black text-white">{f.inherited}</div><div className="text-[10px] uppercase tracking-wider text-slate-500">Inherited</div></div>
+                        <div><div className="text-xl font-black text-amber-400">{f.stranded}</div><div className="text-[10px] uppercase tracking-wider text-slate-500">Stranded</div></div>
+                      </div>
+                      <div className="mt-3 text-center text-xs text-slate-500">{f.successes} clean escapes · {f.partials} partial</div>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-4 text-xs text-slate-500">Fireman ordering emphasizes repeated successful jam escapes and volume. It does not expose the private pitching-optimizer score.</p>
+              </div>
+            </div>
           </div>
+        </section>
 
-          <div className="mt-5 overflow-x-auto">
-            <table className="w-full min-w-[1250px] text-left text-sm">
-              <thead className="border-b border-slate-700 text-slate-400">
-                <tr>
-                  <th className="p-3">Player</th>
-                  <th className="p-3">G</th>
-                  <th className="p-3">PA</th>
-                  <th className="p-3">AVG</th>
-                  <th className="p-3">OBP</th>
-                  <th className="p-3">SLG</th>
-                  <th className="p-3">OPS</th>
-                  <th className="p-3">H</th>
-                  <th className="p-3">2B</th>
-                  <th className="p-3">3B</th>
-                  <th className="p-3">HR</th>
-                  <th className="p-3">RBI</th>
-                  <th className="p-3">SB</th>
-                  <th className="p-3">CS</th>
-                  <th className="p-3">P/PA</th>
-                  <th className="p-3">BB%</th>
-                  <th className="p-3">K%</th>
-                  <th className="p-3">QAB%</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {summaries.map((player) => (
-                  <tr
-                    key={player.playerId}
-                    className="border-b border-slate-800"
-                  >
-                    <td className="p-3 font-medium">
-                      {player.number ? `#${player.number} ` : ""}
-                      {player.name}
-                    </td>
-
-                    <td className="p-3">{player.games}</td>
-                    <td className="p-3">{player.pa}</td>
-                    <td className="p-3">{pct(player.avg)}</td>
-                    <td className="p-3">{pct(player.obp)}</td>
-                    <td className="p-3">{pct(player.slg)}</td>
-                    <td className="p-3 font-semibold">{pct(player.ops)}</td>
-                    <td className="p-3">{player.hits}</td>
-                    <td className="p-3">{player.doubles}</td>
-                    <td className="p-3">{player.triples}</td>
-                    <td className="p-3">{player.homeRuns}</td>
-                    <td className="p-3">{player.rbi}</td>
-                    <td className="p-3">{player.stolenBases}</td>
-                    <td className="p-3">{player.caughtStealing}</td>
-                    <td className="p-3">{decimal(player.pitchesPerPA)}</td>
-                    <td className="p-3">{percent(player.bbPct)}</td>
-                    <td className="p-3">{percent(player.kPct)}</td>
-                    <td className="p-3">{percent(player.qabPct)}</td>
-                  </tr>
-                ))}
-              </tbody>
+        <section className="mt-8 rounded-2xl border border-slate-800 bg-slate-900 p-5">
+          <h2 className="text-2xl font-black">Full Batting Stats</h2>
+          <p className="mt-1 text-sm text-slate-500">Click any column heading to sort.</p>
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-[1600px] w-full text-left text-sm">
+              <thead className="border-b border-slate-700 text-xs uppercase tracking-wider text-slate-500"><tr>
+                {hitterHeaders.map(([label,key]) => <th key={key} onClick={()=>setHS(key)} className="cursor-pointer whitespace-nowrap px-3 py-3 hover:text-white">{label}{hitterSort===key?(hitterAsc?" ↑":" ↓"):""}</th>)}
+              </tr></thead>
+              <tbody>{sortedHitters.map(h => <tr key={h.playerId} className="border-b border-slate-800/70 hover:bg-slate-800/30">
+                <td className="whitespace-nowrap px-3 py-3 font-semibold text-white">{h.number?`#${h.number} `:""}{h.name}</td>
+                {[h.games,h.pa,h.ab,h.runs,h.hits,h.doubles,h.triples,h.homeRuns,h.rbi,h.walks,h.hbp,h.strikeouts,h.stolenBases,h.caughtStealing].map((v,i)=><td key={i} className="px-3 py-3">{v}</td>)}
+                <td className="px-3 py-3">{dec(h.avg)}</td><td className="px-3 py-3">{dec(h.obp)}</td><td className="px-3 py-3">{dec(h.slg)}</td><td className="px-3 py-3 font-bold text-white">{dec(h.ops)}</td>
+                <td className="px-3 py-3">{pct(h.qabPct)}</td><td className="px-3 py-3">{dec2(h.pitchesPerPA)}</td>
+              </tr>)}</tbody>
             </table>
           </div>
         </section>
 
-        {/* METHODOLOGY */}
-
-        <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900 p-6">
-          <div className="text-xs font-semibold uppercase tracking-widest text-slate-500">
-            Behind the Formula
+        <section className="mt-8 rounded-2xl border border-slate-800 bg-slate-900 p-5">
+          <h2 className="text-2xl font-black">Full Pitching Stats</h2>
+          <p className="mt-1 text-sm text-slate-500">Traditional full-season statistics only. Click any column heading to sort.</p>
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-[1250px] w-full text-left text-sm">
+              <thead className="border-b border-slate-700 text-xs uppercase tracking-wider text-slate-500"><tr>
+                {pitcherHeaders.map(([label,key]) => <th key={key} onClick={()=>setPS(key)} className="cursor-pointer whitespace-nowrap px-3 py-3 hover:text-white">{label}{pitcherSort===key?(pitcherAsc?" ↑":" ↓"):""}</th>)}
+              </tr></thead>
+              <tbody>{sortedPitchers.map(p => <tr key={p.playerId} className="border-b border-slate-800/70 hover:bg-slate-800/30">
+                <td className="whitespace-nowrap px-3 py-3 font-semibold text-white">{p.number?`#${p.number} `:""}{p.name}</td>
+                <td className="px-3 py-3">{p.appearances}</td><td className="px-3 py-3">{dec2(p.innings)}</td><td className="px-3 py-3">{p.wins}</td><td className="px-3 py-3">{p.losses}</td><td className="px-3 py-3">{p.saves}</td>
+                <td className="px-3 py-3">{p.hits}</td><td className="px-3 py-3">{p.runs}</td><td className="px-3 py-3">{p.earnedRuns}</td><td className="px-3 py-3">{p.walks}</td><td className="px-3 py-3">{p.strikeouts}</td><td className="px-3 py-3">{p.hbp}</td>
+                <td className="px-3 py-3">{dec2(p.era)}</td><td className="px-3 py-3">{dec2(p.whip)}</td><td className="px-3 py-3">{dec2(p.kbb)}</td><td className="px-3 py-3">{pct(p.kPct)}</td><td className="px-3 py-3">{pct(p.bbPct)}</td>
+              </tr>)}</tbody>
+            </table>
           </div>
+        </section>
 
-          <h2 className="mt-1 text-2xl font-bold">
-            How the Clay Formula Builds the Lineup
-          </h2>
-
-          <div className="mt-4 max-w-4xl space-y-4 text-sm leading-7 text-slate-300">
-            <p>
-              The goal is to build the strongest run-producing lineup from the
-              players who are available. The model makes two separate decisions:
-              first, who deserves to be in the lineup, and second, which batting
-              spot best fits each selected hitter.
-            </p>
-
-            <p>
-              <strong className="text-white">Who makes the lineup:</strong>{" "}
-              49% OBP, 34% SLG, 10% contact rate, 5% adjusted baserunning,
-              and 2% attendance. This intentionally puts most of the decision
-              on the two things that matter most offensively: avoiding outs and
-              doing damage. Contact adds a smaller preference for hitters who
-              put the ball in play, adjusted baserunning rewards useful speed
-              without letting it overwhelm hitting, and attendance is kept at
-              only 2% as a very small reliability factor.
-            </p>
-
-            <p>
-              QAB%, BB%, pitches per plate appearance, home-run rate,
-              extra-base-hit rate, RBI rate, and other secondary traits are
-              still used where they make sense in the batting-order formulas
-              below. They no longer decide whether a clearly stronger overall
-              hitter makes the lineup in the first place.
-            </p>
-
-            <p>
-              <strong className="text-white">#1 — Leadoff:</strong>{" "}
-              35% OBP, 20% pitches per plate appearance, 15% speed, 10% BB%,
-              10% contact, 8% QAB%, and 2% attendance. The goal is to reach base,
-              work counts, create pressure, and avoid outs.
-            </p>
-
-            <p>
-              <strong className="text-white">#2 — Table Setter:</strong>{" "}
-              28% OBP, 17% contact, 15% QAB%, 14% power, 10% AVG, 7% pitches
-              per plate appearance, 6% BB%, and 3% attendance.
-            </p>
-
-            <p>
-              <strong className="text-white">#3 — Best Balanced Hitter:</strong>{" "}
-              28% OPS, 22% OBP, 22% power, 12% AVG, 8% QAB%, 6% contact,
-              and 2% attendance.
-            </p>
-
-            <p>
-              <strong className="text-white">#4 — Cleanup:</strong>{" "}
-              34% power, 17% extra-base-hit rate, 15% home-run rate, 12% RBI
-              rate, 10% OPS, 6% OBP, 4% QAB%, and 2% attendance.
-            </p>
-
-            <p>
-              <strong className="text-white">#5 — Secondary Run Producer:</strong>{" "}
-              28% power, 20% OPS, 15% extra-base-hit rate, 12% RBI rate,
-              10% OBP, 7% QAB%, 6% contact, and 2% attendance.
-            </p>
-
-            <p>
-              <strong className="text-white">#6 — Complete Hitter:</strong>{" "}
-              24% OPS, 20% OBP, 18% power, 10% AVG, 10% QAB%, 10% contact,
-              5% speed, and 3% attendance.
-            </p>
-
-            <p>
-              <strong className="text-white">#7 — Contact / Quality AB:</strong>{" "}
-              23% contact, 20% QAB%, 20% OBP, 12% OPS, 10% AVG, 7% pitches
-              per plate appearance, 5% speed, and 3% attendance.
-            </p>
-
-            <p>
-              <strong className="text-white">#8 — Remaining Offensive Value:</strong>{" "}
-              22% OPS, 20% OBP, 17% contact, 15% QAB%, 10% AVG, 8% power,
-              5% speed, and 3% attendance.
-            </p>
-
-            <p>
-              <strong className="text-white">#9 — Second Leadoff:</strong>{" "}
-              28% OBP, 20% contact, 14% speed, 12% pitches per plate appearance,
-              8% BB%, 8% QAB%, 7% AVG, and 3% attendance.
-            </p>
-
-            <p className="text-slate-400">
-              Power, OPS, HR rate, extra-base-hit rate, RBI rate, speed, and
-              pitches per plate appearance are normalized before entering the
-              positional formulas so that one statistic cannot dominate simply
-              because it uses a larger numerical scale. The same sample-confidence
-              adjustment is then applied to every positional score.
-            </p>
+        <section className="mt-8 rounded-2xl border border-violet-500/30 bg-slate-900 p-5">
+          <div className="text-xs font-bold uppercase tracking-widest text-violet-400">Experimental</div>
+          <h2 className="mt-1 text-2xl font-black">Estimated WAR — Every Player</h2>
+          <p className="mt-2 max-w-4xl text-sm text-slate-400">
+            This is an Iron Horse estimate, not official FanGraphs or Baseball-Reference WAR. It combines team-relative batting,
+            baserunning, pitching and playing-time value. Defense and positional adjustments are not included because we do not
+            have enough reliable data for them.
+          </p>
+          <div className="mt-5 overflow-x-auto">
+            <table className="min-w-[900px] w-full text-left text-sm">
+              <thead className="border-b border-slate-700 text-xs uppercase tracking-wider text-slate-500">
+                <tr><th className="px-3 py-3">Rank</th><th className="px-3 py-3">Player</th><th className="px-3 py-3">Batting Runs</th><th className="px-3 py-3">Baserunning</th><th className="px-3 py-3">Pitching Runs</th><th className="px-3 py-3">Replacement</th><th className="px-3 py-3">Est. WAR</th></tr>
+              </thead>
+              <tbody>{warRows.map((row,index) => (
+                <tr key={row.playerId} className="border-b border-slate-800/70 hover:bg-slate-800/30">
+                  <td className="px-3 py-3 font-bold text-slate-500">{index+1}</td><td className="px-3 py-3 font-semibold text-white">{row.name}</td>
+                  <td className="px-3 py-3">{row.battingRuns.toFixed(1)}</td><td className="px-3 py-3">{row.baserunningRuns.toFixed(1)}</td>
+                  <td className="px-3 py-3">{row.pitchingRuns.toFixed(1)}</td><td className="px-3 py-3">{row.replacementRuns.toFixed(1)}</td>
+                  <td className="px-3 py-3 text-lg font-black text-violet-300">{row.war.toFixed(2)}</td>
+                </tr>
+              ))}</tbody>
+            </table>
           </div>
+          <p className="mt-4 text-xs text-slate-500">Use this for within-team 2026 comparison only; it is not directly comparable with MLB WAR.</p>
         </section>
       </div>
     </main>
