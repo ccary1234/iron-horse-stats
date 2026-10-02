@@ -324,9 +324,10 @@ export default function SeasonStatsPage() {
   // We calculate offensive production with linear weights, then compare it with a
   // replacement-level baseline rather than the average Iron Horse hitter.
   //
-  // Replacement level is set 20 runs per 600 PA below the team-average hitter
-  // (0.0333 runs per PA). That keeps useful regulars from being treated as having
-  // negative value simply because the team itself hit well.
+  // Hitting replacement level is calibrated from the uploaded STLMSBL league data.
+  // We use the 20th percentile of weighted runs/PA among hitters with at least 20 PA:
+  // 0.3043 weighted runs per PA. This anchors Batting RAR to the league
+  // rather than to Iron Horse's own offense.
   //
   // Pitching is evaluated in the team's 7-inning environment using earned runs per inning. It uses the same idea: team-average run prevention plus a replacement
   // allowance of 0.20 runs per inning. Baserunning is valued separately.
@@ -571,7 +572,7 @@ export default function SeasonStatsPage() {
           </div>
 
           <p className="mt-2 max-w-5xl text-sm text-slate-400">
-            This Iron Horse estimate measures value above a replacement-level player, not value above the average Iron Horse player.
+            This Iron Horse estimate measures value above a league-calibrated replacement-level player, not value above the average Iron Horse player.
             Batting uses linear run values for BB, HBP, singles, doubles, triples and home runs; baserunning credits steals and penalizes
             caught stealing; pitching measures earned runs prevented versus a replacement pitcher in the team's 7-inning environment. Two-way players receive both batting
             and pitching value.
@@ -580,7 +581,7 @@ export default function SeasonStatsPage() {
           <div className="mt-4 grid gap-3 md:grid-cols-3">
             <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
               <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Hitting replacement level</div>
-              <div className="mt-1 text-sm text-slate-300">Team-average production minus 20 runs per 600 PA</div>
+              <div className="mt-1 text-sm text-slate-300">STLMSBL 20th percentile among hitters with 20+ PA (0.304 weighted runs/PA)</div>
             </div>
             <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
               <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Pitching replacement level</div>
@@ -624,7 +625,9 @@ export default function SeasonStatsPage() {
           <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/50 p-4 text-xs leading-5 text-slate-500">
             <strong className="text-slate-300">What RAR means:</strong> Runs Above Replacement. A positive Batting RAR means the hitter
             produced more estimated offensive value than a replacement-level hitter would have produced in the same number of plate
-            appearances. This is a transparent team-specific estimate and is not directly comparable with MLB WAR. Defense and positional
+            appearances. Hitting replacement level is anchored to the 20th percentile of weighted batting production among the 116
+            STLMSBL hitters in the supplied league file with at least 20 PA (0.304 weighted runs/PA). The 20-PA cutoff reduces
+            tiny-sample distortion. This is a league-calibrated estimate and is not directly comparable with MLB WAR. Defense and positional
             adjustments are excluded because the current database does not contain enough reliable defensive data.
           </div>
         </section>
