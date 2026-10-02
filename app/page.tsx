@@ -125,7 +125,7 @@ const hitterHeaders: Array<[string, HitterSort]> = [
 const pitcherHeaders: Array<[string, PitcherSort]> = [
   ["Player", "name"], ["App", "appearances"], ["IP", "innings"], ["W", "wins"], ["L", "losses"], ["SV", "saves"],
   ["H", "hits"], ["R", "runs"], ["ER", "earnedRuns"], ["BB", "walks"], ["K", "strikeouts"], ["HBP", "hbp"],
-  ["WP", "wildPitches"], ["ERA", "era"], ["WHIP", "whip"], ["K/BB", "kbb"], ["K%", "kPct"], ["BB%", "bbPct"],
+  ["WP", "wildPitches"], ["ERA (7)", "era"], ["WHIP", "whip"], ["K/BB", "kbb"], ["K%", "kPct"], ["BB%", "bbPct"],
   ["BB/IP", "walksPerInning"], ["K/IP", "strikeoutsPerInning"],
 ];
 
@@ -247,7 +247,7 @@ export default function SeasonStatsPage() {
       playerId: player.id, name: player.name, number: player.number, appearances: rows.length, innings,
       wins: sum("wins"), losses: sum("losses"), saves: sum("saves"), wildPitches: sum("wild_pitches"), hits, runs: sum("runs_allowed"),
       earnedRuns, walks, strikeouts, hbp: sum("hbp"), battersFaced: bf,
-      era: innings ? earnedRuns * 9 / innings : 0, whip: innings ? (walks + hits) / innings : 0,
+      era: innings ? earnedRuns * 7 / innings : 0, whip: innings ? (walks + hits) / innings : 0,
       kbb: walks ? strikeouts / walks : strikeouts, kPct: bf ? strikeouts / bf : 0, bbPct: bf ? walks / bf : 0,
       walksPerInning: innings ? walks / innings : 0,
       strikeoutsPerInning: innings ? strikeouts / innings : 0,
@@ -328,7 +328,7 @@ export default function SeasonStatsPage() {
   // (0.0333 runs per PA). That keeps useful regulars from being treated as having
   // negative value simply because the team itself hit well.
   //
-  // Pitching uses the same idea: team-average run prevention plus a replacement
+  // Pitching is evaluated in the team's 7-inning environment using earned runs per inning. It uses the same idea: team-average run prevention plus a replacement
   // allowance of 0.20 runs per inning. Baserunning is valued separately.
   //
   // 10 runs = approximately 1 win for this estimate.
@@ -467,10 +467,10 @@ export default function SeasonStatsPage() {
         <section className="mt-8">
           <div className="text-xs font-bold uppercase tracking-widest text-sky-400">Team leaders</div>
           <h2 className="mt-1 text-2xl font-black">Pitching Leaders</h2>
-          <p className="mt-1 text-sm text-slate-500">Top five in each category. ERA, WHIP, K% and K/BB require 10 innings pitched.</p>
+          <p className="mt-1 text-sm text-slate-500">Top five in each category. ERA is calculated per 7 innings. ERA, WHIP, K% and K/BB require 10 innings pitched.</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {[
-              ["ERA", topPitchers("era", true, true), (p: Pitcher) => dec2(p.era)],
+              ["ERA (7)", topPitchers("era", true, true), (p: Pitcher) => dec2(p.era)],
               ["WHIP", topPitchers("whip", true, true), (p: Pitcher) => dec2(p.whip)],
               ["Strikeouts", topPitchers("strikeouts"), (p: Pitcher) => String(p.strikeouts)],
               ["K%", topPitchers("kPct", true), (p: Pitcher) => pct(p.kPct)],
@@ -573,7 +573,7 @@ export default function SeasonStatsPage() {
           <p className="mt-2 max-w-5xl text-sm text-slate-400">
             This Iron Horse estimate measures value above a replacement-level player, not value above the average Iron Horse player.
             Batting uses linear run values for BB, HBP, singles, doubles, triples and home runs; baserunning credits steals and penalizes
-            caught stealing; pitching measures earned runs prevented versus a replacement pitcher. Two-way players receive both batting
+            caught stealing; pitching measures earned runs prevented versus a replacement pitcher in the team's 7-inning environment. Two-way players receive both batting
             and pitching value.
           </p>
 
