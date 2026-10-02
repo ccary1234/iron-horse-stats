@@ -304,69 +304,106 @@ export default function SeasonStatsPage() {
   const teamAVG = teamAB ? teamH/teamAB : 0;
   const teamOBP = teamPA ? (teamH+teamBB+teamHBP)/teamPA : 0;
 
-  // Team-specific estimated WAR. This is intentionally labeled "Estimated WAR":
-  // it is not FanGraphs/Baseball-Reference WAR because our database lacks
-  // defensive runs, positional adjustments, park factors and league baselines.
+  // Iron Horse Estimated WAR
+  //
+  // This is a transparent team-specific estimate, not FanGraphs/Baseball-Reference WAR.
+  // We calculate offensive production with linear weights, then compare it with a
+  // replacement-level baseline rather than the average Iron Horse hitter.
+  //
+  // Replacement level is set 20 runs per 600 PA below the team-average hitter
+  // (0.0333 runs per PA). That keeps useful regulars from being treated as having
+  // negative value simply because the team itself hit well.
+  //
+  // Pitching uses the same idea: team-average run prevention plus a replacement
+  // allowance of 0.20 runs per inning. Baserunning is valued separately.
+  //
+  // 10 runs = approximately 1 win for this estimate.
   const warRows = useMemo(() => {
     const hitterById = new Map(hitters.map(h => [h.playerId, h]));
     const pitcherById = new Map(pitchers.map(p => [p.playerId, p]));
     const ids = new Set([...hitterById.keys(), ...pitcherById.keys()]);
 
-    const teamWobaDen = hitters.reduce((sum, h) => sum + h.ab + h.walks + h.hbp, 0);
-    const teamWobaNum = hitters.reduce((sum, h) => {
+    // Linear-weight batting production.
+    const battingRunValue = (h: Hitter) => {
       const singles = Math.max(h.hits - h.doubles - h.triples - h.homeRuns, 0);
-      return sum + 0.69*h.walks + 0.72*h.hbp + 0.89*singles + 1.27*h.doubles + 1.62*h.triples + 2.10*h.homeRuns;
-    }, 0);
-    const teamWoba = teamWobaDen ? teamWobaNum / teamWobaDen : 0.32;
-    const totalPitchingIP = pitchers.reduce((sum,p) => sum + p.innings, 0);
-    const teamPitchingERA = totalPitchingIP
-      ? pitchers.reduce((sum,p) => sum + p.earnedRuns, 0) * 9 / totalPitchingIP
-      : 0;
+      return (
+        0.69 * h.walks +
+        0.72 * h.hbp +
+        0.89 * singles +
+        1.27 * h.doubles +
+        1.62 * h.triples +
+        2.10 * h.homeRuns
+      );
+    };
 
-    return [...ids].map(playerId => {
-      const h = hitterById.get(playerId);
-      const p = pitcherById.get(playerId);
-      let battingRuns = 0, baserunningRuns = 0, pitchingRuns = 0;
+    const teamWeightedRuns = hitters.reduce((sum, h) => sum + battingRunValue(h), 0);
+    const totalPA = hitters.reduce((sum, h) => sum + h.pa, 0);
+    const teamWeightedRunsPerPA = totalPA ? teamWeightedRuns / totalPA : 0;
 
-      if (h) {
-        const singles = Math.max(h.hits - h.doubles - h.triples - h.homeRuns, 0);
-        const den = h.ab + h.walks + h.hbp;
-        const playerWoba = den
-          ? (0.69*h.walks + 0.72*h.hbp + 0.89*singles + 1.27*h.doubles + 1.62*h.triples + 2.10*h.homeRuns) / den
-          : teamWoba;
-        battingRuns = ((playerWoba - teamWoba) / 1.15) * h.pa;
-        baserunningRuns = h.stolenBases * 0.20 - h.caughtStealing * 0.40;
-      }
-      if (p && p.innings > 0) pitchingRuns = ((teamPitchingERA - p.era) / 9) * p.innings;
+    // Replacement hitter is 20 runs / 600 PA below team average.
+    const replacementRunsPerPA = Math.max(teamWeightedRunsPerPA - 20 / 600, 0);
 
-      const replacementRuns = (h?.pa ?? 0) * 0.015 + (p?.innings ?? 0) * 0.10;
-      const player = players.find(x => x.id === playerId);
-      return {
-        playerId,
-        name: player?.name ?? `Player ${playerId}`,
-        battingRuns,
-        baserunningRuns,
-        pitchingRuns,
-        replacementRuns,
-        war: (battingRuns + baserunningRuns + pitchingRuns + replacementRuns) / 10,
-      };
-    }).sort((a,b) => b.war - a.war);
+    const totalPitchingIP = pitchers.reduce((sum, p) => sum + p.innings, 0);
+    const totalPitchingER = pitchers.reduce((sum, p) => sum + p.earnedRuns, 0);
+    const teamERPerInning = totalPitchingIP ? totalPitchingER / totalPitchingIP : 0;
+
+    // Replacement pitcher is allowed 0.20 additional earned runs per inning
+    // versus the team's average pitcher.
+    const replacementERPerInning = teamERPerInning + 0.20;
+
+    const RUNS_PER_WIN = 10;
+
+    return [...ids]
+      .map(playerId => {
+        const h = hitterById.get(playerId);
+        const p = pitcherById.get(playerId);
+
+        let battingRunsAboveReplacement = 0;
+        let baserunningRuns = 0;
+        let pitchingRunsAboveReplacement = 0;
+
+        if (h && h.pa > 0) {
+          const playerWeightedRuns = battingRunValue(h);
+          const replacementWeightedRuns = replacementRunsPerPA * h.pa;
+
+          // Positive means the player's batting production exceeded what a
+          // replacement hitter would be expected to produce in the same PA.
+          battingRunsAboveReplacement =
+            playerWeightedRuns - replacementWeightedRuns;
+
+          // Approximate run values for steals/caught stealing.
+          baserunningRuns =
+            0.20 * h.stolenBases -
+            0.40 * h.caughtStealing;
+        }
+
+        if (p && p.innings > 0) {
+          const replacementER = replacementERPerInning * p.innings;
+
+          // Runs prevented versus a replacement pitcher over the same innings.
+          pitchingRunsAboveReplacement =
+            replacementER - p.earnedRuns;
+        }
+
+        const totalRunsAboveReplacement =
+          battingRunsAboveReplacement +
+          baserunningRuns +
+          pitchingRunsAboveReplacement;
+
+        const player = players.find(x => x.id === playerId);
+
+        return {
+          playerId,
+          name: player?.name ?? `Player ${playerId}`,
+          battingRunsAboveReplacement,
+          baserunningRuns,
+          pitchingRunsAboveReplacement,
+          totalRunsAboveReplacement,
+          war: totalRunsAboveReplacement / RUNS_PER_WIN,
+        };
+      })
+      .sort((a, b) => b.war - a.war);
   }, [hitters, pitchers, players]);
-
-  const hitterHeaders: [string,HitterSort][] = [
-    ["Player","name"],["G","games"],["PA","pa"],["AB","ab"],["R","runs"],["H","hits"],["2B","doubles"],
-    ["3B","triples"],["HR","homeRuns"],["RBI","rbi"],["BB","walks"],["HBP","hbp"],["SO","strikeouts"],
-    ["SB","stolenBases"],["CS","caughtStealing"],["AVG","avg"],["OBP","obp"],["SLG","slg"],["OPS","ops"],
-    ["QAB%","qabPct"],["P/PA","pitchesPerPA"]
-  ];
-  const pitcherHeaders: [string,PitcherSort][] = [
-    ["Pitcher","name"],["APP","appearances"],["IP","innings"],["W","wins"],["L","losses"],["SV","saves"],
-    ["H","hits"],["R","runs"],["ER","earnedRuns"],["BB","walks"],["K","strikeouts"],["HBP","hbp"],
-    ["ERA","era"],["WHIP","whip"],["K/BB","kbb"],["K%","kPct"],["BB%","bbPct"]
-  ];
-
-  if (loading) return <main className="min-h-screen bg-slate-950 p-8 text-white">Loading 2026 season stats...</main>;
-  if (error) return <main className="min-h-screen bg-slate-950 p-8 text-white"><h1 className="text-3xl font-bold">2026 Season Stats</h1><p className="mt-6 text-red-400">{error}</p></main>;
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
@@ -511,29 +548,71 @@ export default function SeasonStatsPage() {
         </section>
 
         <section className="mt-8 rounded-2xl border border-violet-500/30 bg-slate-900 p-5">
-          <div className="text-xs font-bold uppercase tracking-widest text-violet-400">Experimental</div>
-          <h2 className="mt-1 text-2xl font-black">Estimated WAR — Every Player</h2>
-          <p className="mt-2 max-w-4xl text-sm text-slate-400">
-            This is an Iron Horse estimate, not official FanGraphs or Baseball-Reference WAR. It combines team-relative batting,
-            baserunning, pitching and playing-time value. Defense and positional adjustments are not included because we do not
-            have enough reliable data for them.
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <div className="text-xs font-bold uppercase tracking-widest text-violet-400">Experimental · Replacement-Level Model</div>
+              <h2 className="mt-1 text-2xl font-black">Estimated WAR — Every Player</h2>
+            </div>
+            <div className="text-xs text-slate-500">Sorted highest to lowest</div>
+          </div>
+
+          <p className="mt-2 max-w-5xl text-sm text-slate-400">
+            This Iron Horse estimate measures value above a replacement-level player, not value above the average Iron Horse player.
+            Batting uses linear run values for BB, HBP, singles, doubles, triples and home runs; baserunning credits steals and penalizes
+            caught stealing; pitching measures earned runs prevented versus a replacement pitcher. Two-way players receive both batting
+            and pitching value.
           </p>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Hitting replacement level</div>
+              <div className="mt-1 text-sm text-slate-300">Team-average production minus 20 runs per 600 PA</div>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Pitching replacement level</div>
+              <div className="mt-1 text-sm text-slate-300">Team-average ER rate + 0.20 runs allowed per inning</div>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Runs → Wins</div>
+              <div className="mt-1 text-sm text-slate-300">10 runs above replacement ≈ 1 estimated win</div>
+            </div>
+          </div>
+
           <div className="mt-5 overflow-x-auto">
-            <table className="min-w-[900px] w-full text-left text-sm">
+            <table className="min-w-[950px] w-full text-left text-sm">
               <thead className="border-b border-slate-700 text-xs uppercase tracking-wider text-slate-500">
-                <tr><th className="px-3 py-3">Rank</th><th className="px-3 py-3">Player</th><th className="px-3 py-3">Batting Runs</th><th className="px-3 py-3">Baserunning</th><th className="px-3 py-3">Pitching Runs</th><th className="px-3 py-3">Replacement</th><th className="px-3 py-3">Est. WAR</th></tr>
-              </thead>
-              <tbody>{warRows.map((row,index) => (
-                <tr key={row.playerId} className="border-b border-slate-800/70 hover:bg-slate-800/30">
-                  <td className="px-3 py-3 font-bold text-slate-500">{index+1}</td><td className="px-3 py-3 font-semibold text-white">{row.name}</td>
-                  <td className="px-3 py-3">{row.battingRuns.toFixed(1)}</td><td className="px-3 py-3">{row.baserunningRuns.toFixed(1)}</td>
-                  <td className="px-3 py-3">{row.pitchingRuns.toFixed(1)}</td><td className="px-3 py-3">{row.replacementRuns.toFixed(1)}</td>
-                  <td className="px-3 py-3 text-lg font-black text-violet-300">{row.war.toFixed(2)}</td>
+                <tr>
+                  <th className="px-3 py-3">Rank</th>
+                  <th className="px-3 py-3">Player</th>
+                  <th className="px-3 py-3">Batting RAR</th>
+                  <th className="px-3 py-3">Baserunning Runs</th>
+                  <th className="px-3 py-3">Pitching RAR</th>
+                  <th className="px-3 py-3">Total RAR</th>
+                  <th className="px-3 py-3">Est. WAR</th>
                 </tr>
-              ))}</tbody>
+              </thead>
+              <tbody>
+                {warRows.map((row, index) => (
+                  <tr key={row.playerId} className="border-b border-slate-800/70 hover:bg-slate-800/30">
+                    <td className="px-3 py-3 font-bold text-slate-500">{index + 1}</td>
+                    <td className="px-3 py-3 font-semibold text-white">{row.name}</td>
+                    <td className="px-3 py-3">{row.battingRunsAboveReplacement.toFixed(1)}</td>
+                    <td className="px-3 py-3">{row.baserunningRuns.toFixed(1)}</td>
+                    <td className="px-3 py-3">{row.pitchingRunsAboveReplacement.toFixed(1)}</td>
+                    <td className="px-3 py-3 font-bold">{row.totalRunsAboveReplacement.toFixed(1)}</td>
+                    <td className="px-3 py-3 text-lg font-black text-violet-300">{row.war.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
             </table>
           </div>
-          <p className="mt-4 text-xs text-slate-500">Use this for within-team 2026 comparison only; it is not directly comparable with MLB WAR.</p>
+
+          <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/50 p-4 text-xs leading-5 text-slate-500">
+            <strong className="text-slate-300">What RAR means:</strong> Runs Above Replacement. A positive Batting RAR means the hitter
+            produced more estimated offensive value than a replacement-level hitter would have produced in the same number of plate
+            appearances. This is a transparent team-specific estimate and is not directly comparable with MLB WAR. Defense and positional
+            adjustments are excluded because the current database does not contain enough reliable defensive data.
+          </div>
         </section>
       </div>
     </main>
