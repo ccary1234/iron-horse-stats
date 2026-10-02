@@ -115,6 +115,20 @@ type Pitcher = {
 type HitterSort = keyof Hitter;
 type PitcherSort = keyof Pitcher;
 
+const hitterHeaders: Array<[string, HitterSort]> = [
+  ["Player", "name"], ["G", "games"], ["PA", "pa"], ["AB", "ab"], ["R", "runs"],
+  ["H", "hits"], ["2B", "doubles"], ["3B", "triples"], ["HR", "homeRuns"], ["RBI", "rbi"],
+  ["BB", "walks"], ["HBP", "hbp"], ["SO", "strikeouts"], ["SB", "stolenBases"], ["CS", "caughtStealing"],
+  ["AVG", "avg"], ["OBP", "obp"], ["SLG", "slg"], ["OPS", "ops"], ["QAB%", "qabPct"], ["P/PA", "pitchesPerPA"],
+];
+
+const pitcherHeaders: Array<[string, PitcherSort]> = [
+  ["Player", "name"], ["App", "appearances"], ["IP", "innings"], ["W", "wins"], ["L", "losses"], ["SV", "saves"],
+  ["H", "hits"], ["R", "runs"], ["ER", "earnedRuns"], ["BB", "walks"], ["K", "strikeouts"], ["HBP", "hbp"],
+  ["WP", "wildPitches"], ["ERA", "era"], ["WHIP", "whip"], ["K/BB", "kbb"], ["K%", "kPct"], ["BB%", "bbPct"],
+  ["BB/IP", "walksPerInning"], ["K/IP", "strikeoutsPerInning"],
+];
+
 const n = (value: number | null | undefined) => Number(value ?? 0);
 const num = (value: number | string | null | undefined) => {
   const parsed = Number(value ?? 0);
@@ -540,8 +554,8 @@ export default function SeasonStatsPage() {
               <tbody>{sortedPitchers.map(p => <tr key={p.playerId} className="border-b border-slate-800/70 hover:bg-slate-800/30">
                 <td className="whitespace-nowrap px-3 py-3 font-semibold text-white">{p.number?`#${p.number} `:""}{p.name}</td>
                 <td className="px-3 py-3">{p.appearances}</td><td className="px-3 py-3">{dec2(p.innings)}</td><td className="px-3 py-3">{p.wins}</td><td className="px-3 py-3">{p.losses}</td><td className="px-3 py-3">{p.saves}</td>
-                <td className="px-3 py-3">{p.hits}</td><td className="px-3 py-3">{p.runs}</td><td className="px-3 py-3">{p.earnedRuns}</td><td className="px-3 py-3">{p.walks}</td><td className="px-3 py-3">{p.strikeouts}</td><td className="px-3 py-3">{p.hbp}</td>
-                <td className="px-3 py-3">{dec2(p.era)}</td><td className="px-3 py-3">{dec2(p.whip)}</td><td className="px-3 py-3">{dec2(p.kbb)}</td><td className="px-3 py-3">{pct(p.kPct)}</td><td className="px-3 py-3">{pct(p.bbPct)}</td>
+                <td className="px-3 py-3">{p.hits}</td><td className="px-3 py-3">{p.runs}</td><td className="px-3 py-3">{p.earnedRuns}</td><td className="px-3 py-3">{p.walks}</td><td className="px-3 py-3">{p.strikeouts}</td><td className="px-3 py-3">{p.hbp}</td><td className="px-3 py-3">{p.wildPitches}</td>
+                <td className="px-3 py-3">{dec2(p.era)}</td><td className="px-3 py-3">{dec2(p.whip)}</td><td className="px-3 py-3">{dec2(p.kbb)}</td><td className="px-3 py-3">{pct(p.kPct)}</td><td className="px-3 py-3">{pct(p.bbPct)}</td><td className="px-3 py-3">{dec2(p.walksPerInning)}</td><td className="px-3 py-3">{dec2(p.strikeoutsPerInning)}</td>
               </tr>)}</tbody>
             </table>
           </div>
